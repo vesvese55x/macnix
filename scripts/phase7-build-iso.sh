@@ -130,6 +130,7 @@ cp "${MACNIX_ROOT}/scripts/phase3-macos-fetch.sh" "${CHROOT_BASE}/opt/macnix/scr
 cp "${MACNIX_ROOT}/scripts/phase4-qemu-config.sh" "${CHROOT_BASE}/opt/macnix/scripts/"
 cp "${MACNIX_ROOT}/scripts/phase5-gpu-passthrough.sh" "${CHROOT_BASE}/opt/macnix/scripts/"
 cp "${MACNIX_ROOT}/scripts/phase6-ux-setup.sh" "${CHROOT_BASE}/opt/macnix/scripts/"
+cp "${MACNIX_ROOT}/scripts/macnix-debug.sh" "${CHROOT_BASE}/opt/macnix/scripts/"
 cp "${MACNIX_ROOT}/scripts/single-gpu-hooks/"*.sh "${CHROOT_BASE}/opt/macnix/scripts/single-gpu-hooks/"
 chmod +x "${CHROOT_BASE}/opt/macnix/scripts/"*.sh
 chmod +x "${CHROOT_BASE}/opt/macnix/scripts/single-gpu-hooks/"*.sh

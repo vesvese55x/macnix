@@ -81,6 +81,20 @@ def run():
     libcalamares.globalstorage.insert("macnix_branch", profile["branch"])
     libcalamares.globalstorage.insert("macnix_macos_target", profile.get("macos_target", "sonoma"))
     
+    # Notify the user visually during the install!
+    branch = profile["branch"]
+    macos_target = str(profile.get("macos_target", "sonoma")).capitalize()
+    perf = profile.get("perf_range", "")
+    
+    notify_title = "MacNix Hardware Profiler"
+    notify_body = f"Optimal Configuration Found!\n\nTarget: macOS {macos_target}\nMethod: Branch {branch} Passthrough\nExpected Performance: {perf}"
+    
+    try:
+        # Show a cool desktop notification in the live environment
+        subprocess.run(["notify-send", "-u", "critical", "-i", "computer", notify_title, notify_body], check=False)
+    except:
+        pass
+    
     # Log results
     libcalamares.utils.debug(
         pretty_branch(

@@ -172,6 +172,11 @@ log_step "6.11  Recovery escape configured"
 log_info "  Escape: Right Ctrl releases input from Looking Glass"
 log_info "  TTY access: Ctrl+Alt+F2 for Linux console"
 
+# Install debug script
+cp "${SCRIPT_DIR}/macnix-debug.sh" /usr/local/bin/macnix-debug
+chmod +x /usr/local/bin/macnix-debug
+log_info "  Debug Menu: type 'macnix-debug' in the TTY"
+
 # Create macnix user for Looking Glass service
 if ! id macnix &>/dev/null; then
     useradd -r -s /bin/false -G kvm,video,input macnix 2>/dev/null || true
