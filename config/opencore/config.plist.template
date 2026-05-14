@@ -1,0 +1,117 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+    <!--
+        MacNix OpenCore config.plist Template
+        Values marked __PLACEHOLDER__ are replaced at install time by phase4-qemu-config.sh
+    -->
+
+    <!-- Boot configuration -->
+    <key>Misc</key>
+    <dict>
+        <key>Boot</key>
+        <dict>
+            <key>HideAuxiliary</key>
+            <true/>
+            <key>PickerMode</key>
+            <string>External</string>
+            <key>Timeout</key>
+            <integer>0</integer>
+            <key>ShowPicker</key>
+            <false/>
+            <key>PollAppleHotKeys</key>
+            <true/>
+        </dict>
+        <key>Security</key>
+        <dict>
+            <key>AllowSetDefault</key>
+            <true/>
+            <key>ScanPolicy</key>
+            <integer>0</integer>
+            <key>SecureBootModel</key>
+            <string>Disabled</string>
+            <key>Vault</key>
+            <string>Optional</string>
+        </dict>
+    </dict>
+
+    <!-- NVRAM -->
+    <key>NVRAM</key>
+    <dict>
+        <key>Add</key>
+        <dict>
+            <key>7C436110-AB2A-4BBB-A880-FE41995C9F82</key>
+            <dict>
+                <key>boot-args</key>
+                <string>-v keepsyms=1 tlbto_us=0 vti=9</string>
+                <key>prev-lang:kbd</key>
+                <data>ZW4tVVM6MA==</data>
+                <key>csr-active-config</key>
+                <!-- SIP disabled for Kepler patcher / OCLP -->
+                <data>dwMAAA==</data>
+            </dict>
+        </dict>
+    </dict>
+
+    <!-- Platform Identity — replaced at install time -->
+    <key>PlatformInfo</key>
+    <dict>
+        <key>Automatic</key>
+        <true/>
+        <key>UpdateDataHub</key>
+        <true/>
+        <key>UpdateNVRAM</key>
+        <true/>
+        <key>UpdateSMBIOS</key>
+        <true/>
+        <key>UpdateSMBIOSMode</key>
+        <string>Create</string>
+        <key>Generic</key>
+        <dict>
+            <key>SystemProductName</key>
+            <string>__SMBIOS_MODEL__</string>
+            <key>SystemSerialNumber</key>
+            <string>__SERIAL__</string>
+            <key>MLB</key>
+            <string>__MLB__</string>
+            <key>SystemUUID</key>
+            <string>__UUID__</string>
+            <key>ROM</key>
+            <data>__ROM_BASE64__</data>
+            <key>SpoofVendor</key>
+            <true/>
+        </dict>
+    </dict>
+
+    <!-- Kernel patches -->
+    <key>Kernel</key>
+    <dict>
+        <key>Quirks</key>
+        <dict>
+            <key>AppleCpuPmCfgLock</key>
+            <true/>
+            <key>AppleXcpmCfgLock</key>
+            <true/>
+            <key>DisableIoMapper</key>
+            <true/>
+            <key>PanicNoKextDump</key>
+            <true/>
+            <key>PowerTimeoutKernelPanic</key>
+            <true/>
+        </dict>
+    </dict>
+
+    <!-- UEFI -->
+    <key>UEFI</key>
+    <dict>
+        <key>ConnectDrivers</key>
+        <true/>
+        <key>Quirks</key>
+        <dict>
+            <key>IgnoreInvalidFlexRatio</key>
+            <true/>
+        </dict>
+    </dict>
+</dict>
+</plist>

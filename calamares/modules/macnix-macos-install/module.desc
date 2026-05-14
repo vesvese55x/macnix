@@ -1,0 +1,5 @@
+---
+type: "job"
+name: "macnix-macos-install"
+interface: "python"
+script: "main.py"
