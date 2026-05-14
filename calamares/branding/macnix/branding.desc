@@ -1,0 +1,27 @@
+---
+componentName: macnix
+strings:
+    productName: MacNix
+    shortProductName: MacNix
+    version: 1.0.0
+    shortVersion: 1.0
+    versionedName: MacNix 1.0
+    shortVersionedName: MacNix 1.0
+    bootloaderEntryName: MacNix
+    productUrl: https://github.com/macnix
+    supportUrl: https://github.com/macnix/issues
+    knownIssuesUrl: https://github.com/macnix/issues
+    releaseNotesUrl: https://github.com/macnix/releases
+
+images:
+    productLogo: "macnix-logo.png"
+    productIcon: "macnix-icon.png"
+    productWelcome: "macnix-welcome.png"
+
+slideshow: "show.qml"
+
+style:
+    sidebarBackground: "#1a1a2e"
+    sidebarText: "#ffffff"
+    sidebarTextSelect: "#00d4ff"
+    sidebarTextHighlight: "#00d4ff"

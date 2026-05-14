@@ -1,0 +1,32 @@
+# MacNix .gitignore
+
+# Build output
+build/
+*.iso
+
+# OSX-KVM clone (large, cloned at build time)
+osx-kvm/
+
+# VM disk images
+*.qcow2
+*.img
+*.dmg
+
+# Runtime state
+*.log
+*.pid
+
+# Python
+__pycache__/
+*.pyc
+.venv/
+
+# Editor
+.vscode/
+.idea/
+*.swp
+*~
+
+# OS
+.DS_Store
+Thumbs.db

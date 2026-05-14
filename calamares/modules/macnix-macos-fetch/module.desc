@@ -1,0 +1,5 @@
+---
+type: "job"
+name: "macnix-macos-fetch"
+interface: "python"
+script: "main.py"

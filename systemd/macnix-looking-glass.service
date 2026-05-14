@@ -1,0 +1,16 @@
+[Unit]
+Description=MacNix Looking Glass Client
+After=macnix-vm.service
+Requires=macnix-vm.service
+
+[Service]
+Type=simple
+User=macnix
+Environment=SDL_VIDEODRIVER=x11
+ExecStartPre=/bin/sleep 5
+ExecStart=/opt/macnix/looking-glass/looking-glass-client -F -m 97
+Restart=on-failure
+RestartSec=3
+
+[Install]
+WantedBy=graphical.target

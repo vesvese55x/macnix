@@ -1,0 +1,13 @@
+[Unit]
+Description=MacNix First Boot Configuration
+After=network-online.target
+ConditionPathExists=!/etc/macnix/.firstboot-done
+
+[Service]
+Type=oneshot
+ExecStart=/opt/macnix/scripts/firstboot.sh
+RemainAfterExit=yes
+StandardOutput=journal+console
+
+[Install]
+WantedBy=multi-user.target
