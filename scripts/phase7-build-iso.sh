@@ -29,7 +29,7 @@ lb config \
     --architectures amd64 \
     --linux-packages "none" \
     --binary-images iso-hybrid \
-    --bootloader syslinux,grub-efi \
+    --bootloader grub-pc,grub-efi \
     --debian-installer false \
     --security false \
     --memtest none \
