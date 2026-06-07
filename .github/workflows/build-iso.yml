@@ -56,3 +56,50 @@ jobs:
           name: build-log-${{ github.run_number }}
           path: build/build.log
           retention-days: 7
+
+  test-iso:
+    name: Test ISO Boot
+    needs: build-iso
+    runs-on: ubuntu-latest
+    steps:
+      - name: Install QEMU & Tools
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y qemu-system-x86 qemu-utils socat imagemagick
+
+      - name: Download ISO artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: macnix-iso-${{ github.run_number }}
+          path: output/
+
+      - name: Boot ISO in QEMU
+        run: |
+          ISO_FILE=$(ls output/macnix-*.iso | head -1)
+          echo "Booting $ISO_FILE in background (TCG emulation)..."
+          
+          # Launch QEMU headlessly with a control socket
+          sudo qemu-system-x86_64 \
+            -m 4096 \
+            -smp 2 \
+            -cdrom "$ISO_FILE" \
+            -vga std \
+            -display none \
+            -monitor unix:/tmp/qemu-monitor.sock,server,nowait \
+            -daemonize
+            
+          echo "Waiting 180 seconds for XFCE desktop to load..."
+          sleep 180
+          
+          echo "Capturing screenshot..."
+          echo "screendump screenshot.ppm" | sudo socat - UNIX-CONNECT:/tmp/qemu-monitor.sock
+          
+          # Convert PPM to PNG
+          convert screenshot.ppm boot-screenshot.png
+          
+      - name: Upload Screenshot
+        uses: actions/upload-artifact@v4
+        with:
+          name: boot-screenshot-${{ github.run_number }}
+          path: boot-screenshot.png
+          retention-days: 14
