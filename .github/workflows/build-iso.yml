@@ -92,10 +92,11 @@ jobs:
           sleep 180
           
           echo "Capturing screenshot..."
-          echo "screendump screenshot.ppm" | sudo socat - UNIX-CONNECT:/tmp/qemu-monitor.sock
+          # Give QEMU time to process the command and dump the file
+          (echo "screendump screenshot.ppm"; sleep 5) | sudo socat - UNIX-CONNECT:/tmp/qemu-monitor.sock
           
           # Convert PPM to PNG
-          convert screenshot.ppm boot-screenshot.png
+          convert screenshot.ppm boot-screenshot.png || true
           
       - name: Upload Screenshot
         uses: actions/upload-artifact@v4
