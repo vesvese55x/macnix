@@ -29,7 +29,7 @@ lb config \
     --architectures amd64 \
     --linux-packages "none" \
     --binary-images iso-hybrid \
-    --bootloader grub-efi \
+    --bootloader syslinux,grub-efi \
     --debian-installer false \
     --security false \
     --memtest none \
@@ -168,10 +168,6 @@ menuentry "MacNix — Start Installer" {
 }
 menuentry "MacNix — Safe Mode (no splash)" {
     linux /live/vmlinuz boot=live components
-    initrd /live/initrd.img
-}
-menuentry "MacNix — UI Test Mode (Skips macOS download/install)" {
-    linux /live/vmlinuz boot=live components quiet splash plymouth.enable=1 loglevel=3 vt.global_cursor_default=0 macnix.uitest=1
     initrd /live/initrd.img
 }
 GRUBEOF
