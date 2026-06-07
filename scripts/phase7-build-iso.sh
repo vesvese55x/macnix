@@ -188,6 +188,23 @@ menuentry "MacNix — Safe Mode (no splash)" {
 }
 GRUBEOF
 
+# ── Ensure kernel files match our hardcoded grub.cfg ──
+mkdir -p config/hooks/normal
+cat > config/hooks/normal/99-rename-kernel.binary <<'HOOKEOF'
+#!/bin/sh
+set -e
+if [ -d binary/live ]; then
+    cd binary/live
+    for f in vmlinuz-*; do
+        [ -e "$f" ] && mv "$f" vmlinuz
+    done
+    for f in initrd.img-*; do
+        [ -e "$f" ] && mv "$f" initrd.img
+    done
+fi
+HOOKEOF
+chmod +x config/hooks/normal/99-rename-kernel.binary
+
 # ── Plymouth boot splash (replaces Debian text logo) ──
 log_step "7.7c  Plymouth boot splash"
 mkdir -p config/includes.chroot/usr/share/plymouth/themes/macnix
