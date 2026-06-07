@@ -21,6 +21,7 @@ log_step "7.6  Configuring live-build"
 [[ -d config ]] && lb clean 2>/dev/null || true
 
 lb config \
+    --mode debian \
     --distribution bookworm \
     --mirror-bootstrap "http://deb.debian.org/debian/" \
     --mirror-binary "http://deb.debian.org/debian/" \
