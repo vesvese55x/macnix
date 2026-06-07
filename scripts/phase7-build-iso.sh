@@ -56,14 +56,20 @@ mkdir -p config/package-lists
 cat > config/package-lists/macnix.list.chroot <<EOF
 # === Virtualisation stack ===
 qemu-system-x86
+qemu-system-gui
 qemu-utils
 libvirt-daemon-system
 libvirt-clients
 ovmf
 virtinst
+bridge-utils
+dnsmasq
+iptables
+netcat-openbsd
 
 # === GPU / VFIO ===
 pciutils
+usbutils
 
 # === Build essentials ===
 build-essential
@@ -74,10 +80,16 @@ git
 # === macOS utilities ===
 python3
 python3-pip
+python3-requests
+python3-yaml
+python3-jsonschema
 dmg2img
 wget
 curl
 p7zip-full
+parted
+mtools
+dosfstools
 
 # === Looking Glass build deps ===
 libsdl2-dev
@@ -102,6 +114,8 @@ plymouth
 plymouth-themes
 notify-osd
 libnotify-bin
+network-manager
+network-manager-gnome
 
 # === System ===
 grub-efi-amd64-bin
