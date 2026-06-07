@@ -193,14 +193,26 @@ mkdir -p config/hooks/normal
 cat > config/hooks/normal/99-rename-kernel.binary <<'HOOKEOF'
 #!/bin/sh
 set -e
+
+TARGET_DIR=""
 if [ -d binary/live ]; then
-    cd binary/live
+    TARGET_DIR="binary/live"
+elif [ -d live ]; then
+    TARGET_DIR="live"
+elif [ -d ../binary/live ]; then
+    TARGET_DIR="../binary/live"
+fi
+
+if [ -n "$TARGET_DIR" ]; then
+    cd "$TARGET_DIR"
     for f in vmlinuz-*; do
         [ -e "$f" ] && mv "$f" vmlinuz
     done
     for f in initrd.img-*; do
         [ -e "$f" ] && mv "$f" initrd.img
     done
+else
+    echo "WARNING: Could not find live directory, kernel not renamed"
 fi
 HOOKEOF
 chmod +x config/hooks/normal/99-rename-kernel.binary
