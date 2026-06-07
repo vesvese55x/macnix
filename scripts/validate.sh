@@ -151,11 +151,11 @@ header "9. Phase 7 script internal consistency"
 # ──────────────────────────────────────────────
 P7="${MACNIX_ROOT}/scripts/phase7-build-iso.sh"
 if [[ -f "$P7" ]]; then
-    # Check it doesn't use --linux-packages "none"
+    # Ensure it uses --linux-packages "none" to prevent live-build from trying to fetch missing Contents-amd64.gz
     if grep -q 'linux-packages.*none' "$P7"; then
-        fail "phase7 still has --linux-packages 'none' (conflicts with kernel package)"
+        ok "phase7 --linux-packages none (correct)"
     else
-        ok "phase7 --linux-packages OK"
+        fail "phase7 MUST use --linux-packages 'none' to avoid live-build Contents.gz bug"
     fi
     # Check security repo is handled (manual or flag)
     if grep -q 'security true\|debian-security' "$P7"; then
