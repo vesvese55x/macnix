@@ -23,7 +23,7 @@ jobs:
       - name: Install live-build tools
         run: |
           sudo apt-get update
-          sudo apt-get install -y live-build debootstrap xorriso grub-efi-amd64-bin grub-pc-bin mtools dosfstools isolinux syslinux-common
+          sudo apt-get install -y live-build debootstrap xorriso squashfs-tools grub-efi-amd64-bin grub-pc-bin mtools dosfstools isolinux syslinux-common syslinux-utils
 
       - name: Cache bootstrap
         uses: actions/cache@v4

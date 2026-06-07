@@ -28,7 +28,7 @@ MacNix uses `live-build` to generate the ISO.
 
 If you are running on Debian/Ubuntu, you can build it locally:
 ```bash
-sudo apt-get install live-build debootstrap xorriso grub-efi-amd64-bin grub-pc-bin mtools dosfstools isolinux syslinux-common
+sudo apt-get install live-build debootstrap xorriso squashfs-tools grub-efi-amd64-bin grub-pc-bin mtools dosfstools isolinux syslinux-common syslinux-utils
 sudo bash scripts/phase7-build-iso.sh
 ```
 
