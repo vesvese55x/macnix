@@ -9,6 +9,19 @@ import libcalamares
 
 def run():
     """Download macOS recovery image."""
+    
+    # Check for UI Test mode
+    try:
+        with open("/proc/cmdline", "r") as f:
+            if "macnix.uitest=1" in f.read():
+                libcalamares.utils.debug("UI Test Mode active — simulating macOS download")
+                for i in range(1, 11):
+                    time.sleep(0.5)
+                    libcalamares.job.setprogress(i / 10.0)
+                return None
+    except Exception:
+        pass
+
     profile_path = libcalamares.globalstorage.value("macnix_gpu_profile")
     macos_target = libcalamares.globalstorage.value("macnix_macos_target") or "sonoma"
     

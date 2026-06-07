@@ -99,6 +99,19 @@ def check_disk_growing(disk_path, last_size):
 
 def run():
     """Run headless macOS installation."""
+    
+    # Check for UI Test mode
+    try:
+        with open("/proc/cmdline", "r") as f:
+            if "macnix.uitest=1" in f.read():
+                libcalamares.utils.debug("UI Test Mode active — simulating macOS installation")
+                for i in range(1, 21):
+                    time.sleep(0.5)
+                    libcalamares.job.setprogress(i / 20.0)
+                return None
+    except Exception:
+        pass
+
     macos_disk = os.path.join(VM_DIR, "macOS.qcow2")
     
     # Check if already installed (disk > 5GB means macOS is likely installed)

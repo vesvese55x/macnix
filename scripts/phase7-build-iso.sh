@@ -170,6 +170,10 @@ menuentry "MacNix — Safe Mode (no splash)" {
     linux /live/vmlinuz boot=live components
     initrd /live/initrd.img
 }
+menuentry "MacNix — UI Test Mode (Skips macOS download/install)" {
+    linux /live/vmlinuz boot=live components quiet splash plymouth.enable=1 loglevel=3 vt.global_cursor_default=0 macnix.uitest=1
+    initrd /live/initrd.img
+}
 GRUBEOF
 
 # ── Plymouth boot splash (replaces Debian text logo) ──
