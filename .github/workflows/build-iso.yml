@@ -1,0 +1,65 @@
+name: Build MacNix ISO
+
+on:
+  push:
+    branches: [ master, main ]
+  workflow_dispatch:
+    inputs:
+      clean_build:
+        description: 'Force clean build (no cache)'
+        required: false
+        default: 'false'
+        type: boolean
+
+jobs:
+  validate:
+    name: Pre-flight Validation
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Run validator
+        run: bash scripts/validate.sh
+
+  build-iso:
+    name: Build ISO
+    needs: validate
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install live-build tools
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y live-build debootstrap xorriso grub-efi-amd64-bin grub-pc-bin mtools dosfstools
+
+      - name: Cache bootstrap
+        uses: actions/cache@v4
+        with:
+          path: build/cache
+          key: lb-cache-bookworm-${{ hashFiles('scripts/phase7-build-iso.sh') }}
+          restore-keys: lb-cache-bookworm-
+
+      - name: Build ISO
+        run: |
+          sudo bash scripts/phase7-build-iso.sh
+        env:
+          DEBIAN_FRONTEND: noninteractive
+
+      - name: Upload ISO artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: macnix-iso-${{ github.run_number }}
+          path: build/output/macnix-*.iso
+          retention-days: 14
+          compression-level: 0  # ISO is already compressed
+
+      - name: Upload build log
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: build-log-${{ github.run_number }}
+          path: build/build.log
+          retention-days: 7

@@ -23,7 +23,25 @@ else
     log_warn "No GPU profile found, defaulting to Sonoma"
     MACOS_VER="sonoma"
 fi
-log_info "Target: macOS ${MACOS_VER}"
+log_info "Hardware Recommended Target: macOS ${MACOS_VER}"
+
+# --- Winix Custom GUI Selection ---
+if command -v zenity >/dev/null 2>&1; then
+    REC_VER="$MACOS_VER"
+    SELECTED=$(zenity --list --title="Winix OS - macOS Setup" \
+        --text="Select the macOS version to install.\n\nHardware Recommended: <b>macOS ${REC_VER^}</b>" \
+        --radiolist \
+        --column="Select" --column="Version" --column="Description" \
+        $( [[ "$REC_VER" == "sonoma" ]] && echo "TRUE" || echo "FALSE" ) "sonoma" "macOS 14 Sonoma" \
+        $( [[ "$REC_VER" == "ventura" ]] && echo "TRUE" || echo "FALSE" ) "ventura" "macOS 13 Ventura" \
+        $( [[ "$REC_VER" == "monterey" ]] && echo "TRUE" || echo "FALSE" ) "monterey" "macOS 12 Monterey (Required for older NVIDIA)" \
+        --width=600 --height=300)
+    
+    if [[ -n "$SELECTED" ]]; then
+        MACOS_VER="$SELECTED"
+    fi
+fi
+log_info "Final Target: macOS ${MACOS_VER}"
 
 # Map version names to fetch-macOS-v2.py selection numbers
 case "$MACOS_VER" in

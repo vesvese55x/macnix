@@ -57,7 +57,7 @@ else
 fi
 
 log_step "Updating package index"
-$PKG_UPDATE
+$PKG_UPDATE || log_warn "Package update finished with some errors (likely broken PPAs, continuing anyway)"
 
 # ────────────────────────────────────────────────────────────
 # 1.6  Virtualisation stack

@@ -14,14 +14,14 @@ strings:
     releaseNotesUrl: https://github.com/macnix/releases
 
 images:
-    productLogo: "macnix-logo.png"
-    productIcon: "macnix-icon.png"
-    productWelcome: "macnix-welcome.png"
+    productLogo: "macnix_logo.png"
+    productIcon: "macnix_logo.png"
+    productWelcome: "macnix_logo.png"
 
 slideshow: "show.qml"
 
 style:
-    sidebarBackground: "#1a1a2e"
-    sidebarText: "#ffffff"
-    sidebarTextSelect: "#00d4ff"
-    sidebarTextHighlight: "#00d4ff"
+    sidebarBackground: "#0B0C10"
+    sidebarText: "#C5C6C7"
+    sidebarTextSelect: "#66FCF1"
+    sidebarTextHighlight: "#45A29E"

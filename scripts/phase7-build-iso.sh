@@ -24,9 +24,11 @@ lb config \
     --distribution bookworm \
     --archive-areas "main contrib non-free non-free-firmware" \
     --architectures amd64 \
+    --linux-packages "linux-image" \
     --binary-images iso-hybrid \
-    --bootloaders "grub-efi,syslinux" \
+    --bootloader grub-efi \
     --debian-installer false \
+    --security false \
     --memtest none \
     --iso-application "MacNix" \
     --iso-publisher "MacNix Project" \
@@ -34,6 +36,12 @@ lb config \
     --apt-indices false \
     --cache true \
     --cache-packages true
+
+# live-build generates the wrong security URL for Bookworm ("bookworm/updates"
+# instead of "bookworm-security"), so we disable --security and add it manually.
+mkdir -p config/archives
+echo "deb http://security.debian.org/debian-security bookworm-security main contrib non-free non-free-firmware" \
+    > config/archives/security.list.chroot
 
 # ────────────────────────────────────────────────────────────
 # Package lists
@@ -53,7 +61,6 @@ virtinst
 
 # === GPU / VFIO ===
 pciutils
-vfio-pci
 
 # === Build essentials ===
 build-essential
@@ -79,8 +86,25 @@ libgnutls28-dev
 
 # === Installer ===
 calamares
+dbus-x11
+dbus-user-session
+xorg
+xfce4
+lightdm
+zenity
+live-boot
+live-config
+live-config-systemd
+plymouth
+plymouth-themes
+notify-osd
+libnotify-bin
 
 # === System ===
+grub-efi-amd64-bin
+grub-pc-bin
+syslinux-utils
+xorriso
 linux-image-amd64
 linux-headers-amd64
 grub-efi-amd64
@@ -95,22 +119,92 @@ rsync
 EOF
 
 # ────────────────────────────────────────────────────────────
-# 7.7  Auto-launch Calamares
+# 7.7  Auto-launch Calamares + Desktop Branding
 # ────────────────────────────────────────────────────────────
-log_step "7.7  Configuring auto-launch"
+log_step "7.7  Configuring auto-launch & desktop environment"
 
 mkdir -p config/includes.chroot/etc/xdg/autostart
 cat > config/includes.chroot/etc/xdg/autostart/macnix-installer.desktop <<EOF
 [Desktop Entry]
 Type=Application
 Name=MacNix Installer
-Comment=Install MacNix
+Comment=Install MacNix — macOS Virtualization Platform
 Exec=sudo calamares
 Icon=calamares
 Terminal=false
 Categories=System;
 X-GNOME-Autostart-enabled=true
 EOF
+
+# LightDM autologin so user lands straight on desktop (no login screen)
+mkdir -p config/includes.chroot/etc/lightdm/lightdm.conf.d
+cat > config/includes.chroot/etc/lightdm/lightdm.conf.d/90-macnix-autologin.conf <<EOF
+[Seat:*]
+autologin-user=user
+autologin-user-timeout=0
+user-session=xfce
+greeter-hide-users=true
+EOF
+
+# ── GRUB boot menu theming (eliminates frozen Debian logo) ──
+log_step "7.7b  GRUB boot theming"
+mkdir -p config/includes.binary/boot/grub
+cat > config/includes.binary/boot/grub/grub.cfg <<'GRUBEOF'
+set timeout=3
+set default=0
+
+# MacNix dark theme
+set menu_color_normal=cyan/black
+set menu_color_highlight=white/dark-gray
+set color_normal=cyan/black
+set color_highlight=white/dark-gray
+
+menuentry "MacNix — Start Installer" {
+    linux /live/vmlinuz boot=live components quiet splash plymouth.enable=1 loglevel=3 vt.global_cursor_default=0
+    initrd /live/initrd.img
+}
+menuentry "MacNix — Safe Mode (no splash)" {
+    linux /live/vmlinuz boot=live components
+    initrd /live/initrd.img
+}
+GRUBEOF
+
+# ── Plymouth boot splash (replaces Debian text logo) ──
+log_step "7.7c  Plymouth boot splash"
+mkdir -p config/includes.chroot/usr/share/plymouth/themes/macnix
+cp "${MACNIX_ROOT}/calamares/branding/macnix/macnix_logo.png" \
+    config/includes.chroot/usr/share/plymouth/themes/macnix/logo.png
+
+cat > config/includes.chroot/usr/share/plymouth/themes/macnix/macnix.plymouth <<'PLYEOF'
+[Plymouth Theme]
+Name=MacNix
+Description=MacNix boot splash
+ModuleName=script
+
+[script]
+ImageDir=/usr/share/plymouth/themes/macnix
+ScriptFile=/usr/share/plymouth/themes/macnix/macnix.script
+PLYEOF
+
+cat > config/includes.chroot/usr/share/plymouth/themes/macnix/macnix.script <<'SCRIPTEOF'
+// MacNix Plymouth script — centered logo with progress spinner
+logo_image = Image("logo.png");
+logo_sprite = Sprite(logo_image);
+logo_sprite.SetX(Window.GetWidth() / 2 - logo_image.GetWidth() / 2);
+logo_sprite.SetY(Window.GetHeight() / 2 - logo_image.GetHeight() / 2);
+logo_sprite.SetZ(10);
+
+fun refresh_callback() {
+    // Keep logo centered on resize
+    logo_sprite.SetX(Window.GetWidth() / 2 - logo_image.GetWidth() / 2);
+    logo_sprite.SetY(Window.GetHeight() / 2 - logo_image.GetHeight() / 2);
+}
+Plymouth.SetRefreshFunction(refresh_callback);
+
+// Dark background
+Window.SetBackgroundTopColor(0.04, 0.05, 0.06);
+Window.SetBackgroundBottomColor(0.12, 0.16, 0.20);
+SCRIPTEOF
 
 # ────────────────────────────────────────────────────────────
 # 7.8  Bundle MacNix components
@@ -123,27 +217,40 @@ CHROOT_BASE="config/includes.chroot"
 mkdir -p "${CHROOT_BASE}/opt/macnix/scripts/utils"
 mkdir -p "${CHROOT_BASE}/opt/macnix/scripts/single-gpu-hooks"
 mkdir -p "${CHROOT_BASE}/opt/macnix/hooks"
-cp "${MACNIX_ROOT}/scripts/utils/common.sh" "${CHROOT_BASE}/opt/macnix/scripts/utils/"
-cp "${MACNIX_ROOT}/scripts/utils/gpu-db.sh" "${CHROOT_BASE}/opt/macnix/scripts/utils/"
-cp "${MACNIX_ROOT}/scripts/phase2-gpu-detect.sh" "${CHROOT_BASE}/opt/macnix/scripts/"
-cp "${MACNIX_ROOT}/scripts/phase3-macos-fetch.sh" "${CHROOT_BASE}/opt/macnix/scripts/"
-cp "${MACNIX_ROOT}/scripts/phase4-qemu-config.sh" "${CHROOT_BASE}/opt/macnix/scripts/"
+# Fix #3 & #8: copy all utils (including smbios-gen.sh) and all phase scripts (including phase1)
+cp "${MACNIX_ROOT}/scripts/utils/common.sh"     "${CHROOT_BASE}/opt/macnix/scripts/utils/"
+cp "${MACNIX_ROOT}/scripts/utils/gpu-db.sh"     "${CHROOT_BASE}/opt/macnix/scripts/utils/"
+cp "${MACNIX_ROOT}/scripts/utils/smbios-gen.sh" "${CHROOT_BASE}/opt/macnix/scripts/utils/"
+cp "${MACNIX_ROOT}/scripts/phase1-setup.sh"        "${CHROOT_BASE}/opt/macnix/scripts/"
+cp "${MACNIX_ROOT}/scripts/phase2-gpu-detect.sh"   "${CHROOT_BASE}/opt/macnix/scripts/"
+cp "${MACNIX_ROOT}/scripts/phase3-macos-fetch.sh"  "${CHROOT_BASE}/opt/macnix/scripts/"
+cp "${MACNIX_ROOT}/scripts/phase4-qemu-config.sh"  "${CHROOT_BASE}/opt/macnix/scripts/"
 cp "${MACNIX_ROOT}/scripts/phase5-gpu-passthrough.sh" "${CHROOT_BASE}/opt/macnix/scripts/"
-cp "${MACNIX_ROOT}/scripts/phase6-ux-setup.sh" "${CHROOT_BASE}/opt/macnix/scripts/"
-cp "${MACNIX_ROOT}/scripts/macnix-debug.sh" "${CHROOT_BASE}/opt/macnix/scripts/"
-cp "${MACNIX_ROOT}/scripts/single-gpu-hooks/"*.sh "${CHROOT_BASE}/opt/macnix/scripts/single-gpu-hooks/"
+cp "${MACNIX_ROOT}/scripts/phase6-ux-setup.sh"     "${CHROOT_BASE}/opt/macnix/scripts/"
+cp "${MACNIX_ROOT}/scripts/macnix-debug.sh"        "${CHROOT_BASE}/opt/macnix/scripts/"
+cp "${MACNIX_ROOT}/scripts/single-gpu-hooks/"*.sh  "${CHROOT_BASE}/opt/macnix/scripts/single-gpu-hooks/"
 chmod +x "${CHROOT_BASE}/opt/macnix/scripts/"*.sh
 chmod +x "${CHROOT_BASE}/opt/macnix/scripts/single-gpu-hooks/"*.sh
+chmod +x "${CHROOT_BASE}/opt/macnix/scripts/utils/"*.sh
+
+# Fix #9: bundle config templates (gpu-profile template, opencore, qemu, system configs)
+mkdir -p "${CHROOT_BASE}/opt/macnix/config"
+cp -r "${MACNIX_ROOT}/config/"* "${CHROOT_BASE}/opt/macnix/config/"
 
 # Calamares modules
 mkdir -p "${CHROOT_BASE}/usr/lib/calamares/modules"
-for mod in macnix-gpu-detect macnix-macos-fetch macnix-gpu-config; do
+# Fix #1: bundle ALL 5 custom modules referenced in settings.conf
+for mod in macnix-welcome macnix-gpu-detect macnix-macos-fetch macnix-macos-install macnix-gpu-config; do
     cp -r "${MACNIX_ROOT}/calamares/modules/${mod}" "${CHROOT_BASE}/usr/lib/calamares/modules/"
 done
 
 # Calamares settings
 mkdir -p "${CHROOT_BASE}/etc/calamares"
 cp "${MACNIX_ROOT}/calamares/settings.conf" "${CHROOT_BASE}/etc/calamares/"
+
+# Fix #2: bundle branding (required by settings.conf: branding: macnix)
+mkdir -p "${CHROOT_BASE}/etc/calamares/branding"
+cp -r "${MACNIX_ROOT}/calamares/branding/macnix" "${CHROOT_BASE}/etc/calamares/branding/"
 
 # Systemd services
 mkdir -p "${CHROOT_BASE}/etc/systemd/system"
@@ -155,8 +262,10 @@ done
 if [[ -d "${MACNIX_ROOT}/osx-kvm" ]]; then
     mkdir -p "${CHROOT_BASE}/opt/macnix/osx-kvm"
     cp "${MACNIX_ROOT}/osx-kvm/fetch-macOS-v2.py" "${CHROOT_BASE}/opt/macnix/osx-kvm/" 2>/dev/null || true
-    [[ -d "${MACNIX_ROOT}/osx-kvm/OpenCore" ]] && \
+    # Fix #6: use if/then to avoid &&/|| precedence swallowing real cp errors
+    if [[ -d "${MACNIX_ROOT}/osx-kvm/OpenCore" ]]; then
         cp -r "${MACNIX_ROOT}/osx-kvm/OpenCore" "${CHROOT_BASE}/opt/macnix/osx-kvm/" 2>/dev/null || true
+    fi
 fi
 
 # MacNix directories
@@ -191,7 +300,9 @@ echo "VM_CORES=${VM_CORES}" >> /etc/macnix/vm.conf
 TOTAL_RAM=$(awk '/MemTotal/{printf "%d", $2/1048576}' /proc/meminfo)
 VM_RAM=$(( TOTAL_RAM / 2 ))
 (( VM_RAM < 8 )) && VM_RAM=8
-HUGEPAGES=$(( VM_RAM ))  # 1GB pages
+# Fix #7: Linux default hugepage size is 2MB, not 1GB.
+# Allocate enough 2MB hugepages to cover VM_RAM (1 GB = 512 × 2MB pages).
+HUGEPAGES=$(( VM_RAM * 512 ))  # 2MB hugepages
 echo "VM_RAM_GB=${VM_RAM}" >> /etc/macnix/vm.conf
 echo "HUGEPAGES=${HUGEPAGES}" >> /etc/macnix/vm.conf
 
@@ -258,13 +369,38 @@ systemctl enable macnix-firstboot.service 2>/dev/null || true
 chmod +x /opt/macnix/scripts/*.sh 2>/dev/null || true
 chmod +x /opt/macnix/scripts/single-gpu-hooks/*.sh 2>/dev/null || true
 chmod +x /opt/macnix/scripts/utils/*.sh 2>/dev/null || true
+
+# Set MacNix as the Plymouth theme (removes frozen Debian logo)
+if command -v plymouth-set-default-theme &>/dev/null; then
+    plymouth-set-default-theme macnix 2>/dev/null || true
+    update-initramfs -u 2>/dev/null || true
+fi
+
+# Create live 'user' account for LightDM autologin
+if ! id -u user &>/dev/null; then
+    useradd -m -s /bin/bash -G sudo,cdrom,audio,video,plugdev,netdev user 2>/dev/null || true
+    echo "user:live" | chpasswd 2>/dev/null || true
+fi
+
+# Allow passwordless sudo for calamares in live env
+echo "user ALL=(ALL) NOPASSWD: ALL" > /etc/sudoers.d/macnix-live
+chmod 440 /etc/sudoers.d/macnix-live
 HOOKEOF
 chmod +x config/hooks/live/0100-macnix-setup.hook.chroot
 
 # ────────────────────────────────────────────────────────────
-# 7.10  Build ISO
+# 7.10  Validate & Build ISO
 # ────────────────────────────────────────────────────────────
-log_step "7.10  Building ISO"
+log_step "7.10a  Running pre-build validation"
+if [[ -f "${MACNIX_ROOT}/scripts/validate.sh" ]]; then
+    bash "${MACNIX_ROOT}/scripts/validate.sh" || {
+        log_error "Validation failed — fix issues above before building"
+        exit 1
+    }
+    log_success "Pre-build validation passed"
+fi
+
+log_step "7.10b  Building ISO"
 log_info "This will take 15–30 minutes..."
 
 lb build 2>&1 | tee "${BUILD_DIR}/build.log"
@@ -277,8 +413,10 @@ if [[ -n "$ISO_FILE" ]]; then
     
     # Copy to output
     mkdir -p "${BUILD_DIR}/output"
-    mv "$ISO_FILE" "${BUILD_DIR}/output/macnix-$(date +%Y%m%d).iso"
-    log_success "Final ISO: ${BUILD_DIR}/output/macnix-$(date +%Y%m%d).iso"
+    # Fix #12: capture date once to prevent midnight race between mv and log
+    ISO_DATE=$(date +%Y%m%d)
+    mv "$ISO_FILE" "${BUILD_DIR}/output/macnix-${ISO_DATE}.iso"
+    log_success "Final ISO: ${BUILD_DIR}/output/macnix-${ISO_DATE}.iso"
 else
     log_error "ISO build failed — check ${BUILD_DIR}/build.log"
     exit 1
