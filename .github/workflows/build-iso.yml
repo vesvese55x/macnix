@@ -24,7 +24,7 @@ jobs:
       - name: Install live-build tools
         run: |
           apt-get update
-          apt-get install -y sudo git curl live-build debootstrap xorriso squashfs-tools grub-efi-amd64-bin grub-pc-bin mtools dosfstools isolinux syslinux-common syslinux-utils
+          apt-get install -y sudo git curl python3 live-build debootstrap xorriso squashfs-tools grub-efi-amd64-bin grub-pc-bin mtools dosfstools isolinux syslinux-common syslinux-utils
 
       - name: Cache bootstrap
         uses: actions/cache@v4

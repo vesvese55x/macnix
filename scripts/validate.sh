@@ -13,9 +13,9 @@ CYAN='\033[0;36m'; BOLD='\033[1m'; NC='\033[0m'
 
 PASS=0; FAIL=0; WARN=0
 
-ok()   { ((PASS++)); echo -e "  ${GREEN}✓${NC} $*"; }
-fail() { ((FAIL++)); echo -e "  ${RED}✗${NC} $*"; }
-warn() { ((WARN++)); echo -e "  ${YELLOW}⚠${NC} $*"; }
+ok()   { ((PASS++)) || true; echo -e "  ${GREEN}✓${NC} $*"; }
+fail() { ((FAIL++)) || true; echo -e "  ${RED}✗${NC} $*"; }
+warn() { ((WARN++)) || true; echo -e "  ${YELLOW}⚠${NC} $*"; }
 
 header() { echo -e "\n${CYAN}${BOLD}── $* ──${NC}"; }
 
