@@ -15,7 +15,9 @@ jobs:
   build-iso:
     name: Build ISO
     runs-on: ubuntu-latest
-    container: debian:bookworm
+    container:
+      image: debian:bookworm
+      options: --privileged
     timeout-minutes: 60
 
     steps:
