@@ -17,8 +17,9 @@ cd "$BUILD_DIR"
 # ────────────────────────────────────────────────────────────
 log_step "7.6  Configuring live-build"
 
-# Clean previous build
-[[ -d config ]] && lb clean 2>/dev/null || true
+# Clean previous build (--purge removes stale chroot to avoid dpkg-divert corruption)
+[[ -d config ]] && lb clean --purge 2>/dev/null || true
+rm -rf .build 2>/dev/null || true
 
 lb config \
     --mode debian \
@@ -38,7 +39,8 @@ lb config \
     --iso-volume "MACNIX" \
     --apt-indices false \
     --cache true \
-    --cache-packages true
+    --cache-packages true \
+    --firmware-chroot false
 
 # live-build generates the wrong security URL for Bookworm ("bookworm/updates"
 # instead of "bookworm-security"), so we disable --security and add it manually.
@@ -163,6 +165,15 @@ autologin-user=user
 autologin-user-timeout=0
 user-session=xfce
 greeter-hide-users=true
+EOF
+
+# Force Xorg to use modern modesetting driver (prevents bochs-drm / fbdev fallback hangs in QEMU)
+mkdir -p config/includes.chroot/etc/X11/xorg.conf.d
+cat > config/includes.chroot/etc/X11/xorg.conf.d/10-modesetting.conf <<EOF
+Section "Device"
+    Identifier "Graphics"
+    Driver "modesetting"
+EndSection
 EOF
 
 # ── GRUB boot menu theming (eliminates frozen Debian logo) ──
@@ -393,6 +404,7 @@ cat > "${CHROOT_BASE}/etc/systemd/system/macnix-firstboot.service" <<EOF
 Description=MacNix First Boot Configuration
 After=network-online.target
 ConditionPathExists=!/etc/macnix/.firstboot-done
+ConditionKernelCommandLine=!boot=live
 
 [Service]
 Type=oneshot
