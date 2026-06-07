@@ -27,7 +27,7 @@ lb config \
     --mirror-binary "http://deb.debian.org/debian/" \
     --archive-areas "main contrib non-free non-free-firmware" \
     --architectures amd64 \
-    --linux-packages "none" \
+    --linux-packages "linux-image" \
     --binary-images iso-hybrid \
     --bootloader grub-pc,grub-efi \
     --debian-installer false \
