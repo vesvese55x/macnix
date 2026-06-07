@@ -106,7 +106,7 @@ calamares
 dbus-x11
 dbus-user-session
 xorg
-xfce4
+openbox
 lightdm
 zenity
 live-boot
@@ -163,8 +163,16 @@ cat > config/includes.chroot/etc/lightdm/lightdm.conf.d/90-macnix-autologin.conf
 [Seat:*]
 autologin-user=user
 autologin-user-timeout=0
-user-session=xfce
+user-session=openbox
 greeter-hide-users=true
+EOF
+
+mkdir -p config/includes.chroot/etc/xdg/openbox
+cat > config/includes.chroot/etc/xdg/openbox/autostart <<EOF
+# Solid dark background
+xsetroot -solid "#1e1e1e"
+# Auto-start installer
+sudo calamares &
 EOF
 
 # Force Xorg to use modern modesetting driver (prevents bochs-drm / fbdev fallback hangs in QEMU)
