@@ -106,7 +106,9 @@ libnotify-bin
 # === System ===
 grub-efi-amd64-bin
 grub-pc-bin
+syslinux-common
 syslinux-utils
+isolinux
 xorriso
 linux-image-amd64
 linux-headers-amd64
