@@ -134,8 +134,7 @@ for c in "${CONFIGS[@]}"; do
 done
 # Branch overrides
 for b in a b c d e; do
-    f="config/qemu/branch-overrides/branch-${b}-*.conf"
-    matches=$(ls ${MACNIX_ROOT}/${f} 2>/dev/null | wc -l)
+    matches=$(ls ${MACNIX_ROOT}/config/qemu/branch-overrides/branch-${b}-*.conf 2>/dev/null | wc -l || echo 0)
     (( matches > 0 )) && ok "branch-${b} override exists" || warn "branch-${b} override — not found (may be optional)"
 done
 
