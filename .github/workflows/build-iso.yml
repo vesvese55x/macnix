@@ -15,6 +15,7 @@ jobs:
   build-iso:
     name: Build ISO
     runs-on: ubuntu-latest
+    container: debian:bookworm
     timeout-minutes: 60
 
     steps:
@@ -22,8 +23,8 @@ jobs:
 
       - name: Install live-build tools
         run: |
-          sudo apt-get update
-          sudo apt-get install -y live-build debootstrap xorriso squashfs-tools grub-efi-amd64-bin grub-pc-bin mtools dosfstools isolinux syslinux-common syslinux-utils
+          apt-get update
+          apt-get install -y sudo git curl live-build debootstrap xorriso squashfs-tools grub-efi-amd64-bin grub-pc-bin mtools dosfstools isolinux syslinux-common syslinux-utils
 
       - name: Cache bootstrap
         uses: actions/cache@v4
@@ -34,7 +35,7 @@ jobs:
 
       - name: Build ISO
         run: |
-          sudo bash scripts/phase7-build-iso.sh
+          bash scripts/phase7-build-iso.sh
         env:
           DEBIAN_FRONTEND: noninteractive
 

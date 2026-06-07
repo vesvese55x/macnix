@@ -28,7 +28,7 @@ lb config \
     --archive-areas "main contrib non-free non-free-firmware" \
     --architectures amd64 \
     --linux-packages "none" \
-    --binary-images iso \
+    --binary-images iso-hybrid \
     --bootloader grub-pc,grub-efi \
     --debian-installer false \
     --security false \
