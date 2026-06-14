@@ -25,13 +25,15 @@ else
 fi
 log_info "Hardware Recommended Target: macOS ${MACOS_VER}"
 
-# --- Winix Custom GUI Selection ---
+# --- MacNix Custom GUI Selection ---
 if command -v zenity >/dev/null 2>&1; then
     REC_VER="$MACOS_VER"
-    SELECTED=$(zenity --list --title="Winix OS - macOS Setup" \
+    SELECTED=$(zenity --list --title="MacNix - macOS Setup" \
         --text="Select the macOS version to install.\n\nHardware Recommended: <b>macOS ${REC_VER^}</b>" \
         --radiolist \
         --column="Select" --column="Version" --column="Description" \
+        $( [[ "$REC_VER" == "tahoe" ]] && echo "TRUE" || echo "FALSE" ) "tahoe" "macOS 16 Tahoe" \
+        $( [[ "$REC_VER" == "sequoia" ]] && echo "TRUE" || echo "FALSE" ) "sequoia" "macOS 15 Sequoia" \
         $( [[ "$REC_VER" == "sonoma" ]] && echo "TRUE" || echo "FALSE" ) "sonoma" "macOS 14 Sonoma" \
         $( [[ "$REC_VER" == "ventura" ]] && echo "TRUE" || echo "FALSE" ) "ventura" "macOS 13 Ventura" \
         $( [[ "$REC_VER" == "monterey" ]] && echo "TRUE" || echo "FALSE" ) "monterey" "macOS 12 Monterey (Required for older NVIDIA)" \
@@ -48,7 +50,8 @@ case "$MACOS_VER" in
     monterey) FETCH_SEL="3" ;;
     ventura)  FETCH_SEL="2" ;;
     sonoma)   FETCH_SEL="1" ;;
-    sequoia)  FETCH_SEL="1" ;;  # latest
+    sequoia)  FETCH_SEL="1" ;;
+    tahoe)    FETCH_SEL="1" ;;
     *)        FETCH_SEL="1" ;;
 esac
 

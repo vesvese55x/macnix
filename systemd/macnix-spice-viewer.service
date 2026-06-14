@@ -1,14 +1,14 @@
 [Unit]
-Description=MacNix Looking Glass Client
+Description=MacNix SPICE Display
 After=macnix-vm.service
 Requires=macnix-vm.service
 
 [Service]
 Type=simple
-User=macnix
-Environment=SDL_VIDEODRIVER=x11
 ExecStartPre=/bin/sleep 5
-ExecStart=/opt/macnix/looking-glass/looking-glass-client -F -m 97
+ExecStart=/usr/bin/remote-viewer --full-screen spice://localhost:5930
+User=macnix
+Environment=DISPLAY=:0
 Restart=on-failure
 RestartSec=3
 

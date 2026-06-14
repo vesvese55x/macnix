@@ -1,0 +1,8 @@
+[Plymouth Theme]
+Name=MacNix
+Description=Apple-inspired boot animation
+ModuleName=script
+
+[script]
+ImageDir=/usr/share/plymouth/themes/macnix
+ScriptFile=/usr/share/plymouth/themes/macnix/macnix.script

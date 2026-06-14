@@ -68,10 +68,13 @@ bridge-utils
 dnsmasq
 iptables
 netcat-openbsd
+virt-viewer
 
 # === GPU / VFIO ===
 pciutils
 usbutils
+numactl
+cpufrequtils
 
 # === Build essentials ===
 build-essential
@@ -85,6 +88,8 @@ python3-pip
 python3-requests
 python3-yaml
 python3-jsonschema
+python3-opencv
+python3-pil
 dmg2img
 wget
 curl
@@ -92,14 +97,6 @@ p7zip-full
 parted
 mtools
 dosfstools
-
-# === Looking Glass build deps ===
-libsdl2-dev
-libsdl2-ttf-dev
-libfontconfig-dev
-libx11-dev
-nettle-dev
-libgnutls28-dev
 
 # === Installer ===
 calamares
@@ -114,10 +111,18 @@ live-config
 live-config-systemd
 plymouth
 plymouth-themes
-notify-osd
 libnotify-bin
 network-manager
 network-manager-gnome
+
+# === Fingerprint & Security ===
+fprintd
+libpam-fprintd
+libsecret-tools
+gnome-keyring
+
+# === Fonts ===
+fonts-inter
 
 # === System ===
 grub-efi-amd64-bin
@@ -171,8 +176,8 @@ mkdir -p config/includes.chroot/etc/xdg/openbox
 cat > config/includes.chroot/etc/xdg/openbox/autostart <<EOF
 # Solid dark background
 xsetroot -solid "#1e1e1e"
-# Auto-start installer
-sudo calamares &
+# Run hardware precheck, then auto-start installer
+bash /opt/macnix/scripts/macnix-precheck.sh && sudo calamares &
 EOF
 
 # Force Xorg to use modern modesetting driver (prevents bochs-drm / fbdev fallback hangs in QEMU)
@@ -239,39 +244,8 @@ chmod +x config/hooks/normal/99-rename-kernel.binary
 # ── Plymouth boot splash (replaces Debian text logo) ──
 log_step "7.7c  Plymouth boot splash"
 mkdir -p config/includes.chroot/usr/share/plymouth/themes/macnix
-cp "${MACNIX_ROOT}/calamares/branding/macnix/macnix_logo.png" \
-    config/includes.chroot/usr/share/plymouth/themes/macnix/logo.png
-
-cat > config/includes.chroot/usr/share/plymouth/themes/macnix/macnix.plymouth <<'PLYEOF'
-[Plymouth Theme]
-Name=MacNix
-Description=MacNix boot splash
-ModuleName=script
-
-[script]
-ImageDir=/usr/share/plymouth/themes/macnix
-ScriptFile=/usr/share/plymouth/themes/macnix/macnix.script
-PLYEOF
-
-cat > config/includes.chroot/usr/share/plymouth/themes/macnix/macnix.script <<'SCRIPTEOF'
-// MacNix Plymouth script — centered logo with progress spinner
-logo_image = Image("logo.png");
-logo_sprite = Sprite(logo_image);
-logo_sprite.SetX(Window.GetWidth() / 2 - logo_image.GetWidth() / 2);
-logo_sprite.SetY(Window.GetHeight() / 2 - logo_image.GetHeight() / 2);
-logo_sprite.SetZ(10);
-
-fun refresh_callback() {
-    // Keep logo centered on resize
-    logo_sprite.SetX(Window.GetWidth() / 2 - logo_image.GetWidth() / 2);
-    logo_sprite.SetY(Window.GetHeight() / 2 - logo_image.GetHeight() / 2);
-}
-Plymouth.SetRefreshFunction(refresh_callback);
-
-// Dark background
-Window.SetBackgroundTopColor(0.04, 0.05, 0.06);
-Window.SetBackgroundBottomColor(0.12, 0.16, 0.20);
-SCRIPTEOF
+cp -r "${MACNIX_ROOT}/plymouth/macnix/"* \
+    config/includes.chroot/usr/share/plymouth/themes/macnix/
 
 # ────────────────────────────────────────────────────────────
 # 7.8  Bundle MacNix components
@@ -295,8 +269,19 @@ cp "${MACNIX_ROOT}/scripts/phase4-qemu-config.sh"  "${CHROOT_BASE}/opt/macnix/sc
 cp "${MACNIX_ROOT}/scripts/phase5-gpu-passthrough.sh" "${CHROOT_BASE}/opt/macnix/scripts/"
 cp "${MACNIX_ROOT}/scripts/phase6-ux-setup.sh"     "${CHROOT_BASE}/opt/macnix/scripts/"
 cp "${MACNIX_ROOT}/scripts/macnix-debug.sh"        "${CHROOT_BASE}/opt/macnix/scripts/"
+cp "${MACNIX_ROOT}/scripts/macnix-auto-install.py" "${CHROOT_BASE}/opt/macnix/scripts/"
+cp "${MACNIX_ROOT}/scripts/macnix-fingerprint-bridge.py" "${CHROOT_BASE}/opt/macnix/scripts/"
+cp "${MACNIX_ROOT}/scripts/macnix-setup-assistant.sh" "${CHROOT_BASE}/opt/macnix/scripts/"
+cp "${MACNIX_ROOT}/scripts/macnix-precheck.sh"     "${CHROOT_BASE}/opt/macnix/scripts/"
 cp "${MACNIX_ROOT}/scripts/single-gpu-hooks/"*.sh  "${CHROOT_BASE}/opt/macnix/scripts/single-gpu-hooks/"
+
+# Fingerprint CLI tool
+mkdir -p "${CHROOT_BASE}/usr/local/bin"
+cp "${MACNIX_ROOT}/scripts/macnix-fingerprint"     "${CHROOT_BASE}/usr/local/bin/"
+chmod +x "${CHROOT_BASE}/usr/local/bin/macnix-fingerprint"
+
 chmod +x "${CHROOT_BASE}/opt/macnix/scripts/"*.sh
+chmod +x "${CHROOT_BASE}/opt/macnix/scripts/"*.py 2>/dev/null || true
 chmod +x "${CHROOT_BASE}/opt/macnix/scripts/single-gpu-hooks/"*.sh
 chmod +x "${CHROOT_BASE}/opt/macnix/scripts/utils/"*.sh
 

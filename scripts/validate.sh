@@ -31,6 +31,8 @@ SCRIPTS=(
     "scripts/phase6-ux-setup.sh"
     "scripts/phase7-build-iso.sh"
     "scripts/macnix-debug.sh"
+    "scripts/macnix-precheck.sh"
+    "scripts/macnix-setup-assistant.sh"
     "scripts/build.sh"
 )
 for s in "${SCRIPTS[@]}"; do
@@ -56,7 +58,7 @@ done
 # ──────────────────────────────────────────────
 header "4. Calamares modules (must match settings.conf sequence)"
 # ──────────────────────────────────────────────
-MODULES=(macnix-welcome macnix-gpu-detect macnix-macos-fetch macnix-macos-install macnix-gpu-config)
+MODULES=(macnix-welcome macnix-gpu-detect macnix-macos-fetch macnix-gpu-config)
 for mod in "${MODULES[@]}"; do
     dir="${MACNIX_ROOT}/calamares/modules/${mod}"
     if [[ -d "$dir" ]]; then
@@ -141,7 +143,7 @@ done
 # ──────────────────────────────────────────────
 header "8. Systemd services"
 # ──────────────────────────────────────────────
-SERVICES=("systemd/macnix-firstboot.service" "systemd/macnix-vm.service" "systemd/macnix-looking-glass.service")
+SERVICES=("systemd/macnix-firstboot.service" "systemd/macnix-vm.service")
 for svc in "${SERVICES[@]}"; do
     [[ -f "${MACNIX_ROOT}/${svc}" ]] && ok "$svc" || fail "$svc — MISSING"
 done
@@ -162,8 +164,8 @@ if [[ -f "$P7" ]]; then
     else
         warn "phase7 --security may be disabled"
     fi
-    # Check all 5 modules are in the copy loop
-    for mod in macnix-welcome macnix-gpu-detect macnix-macos-fetch macnix-macos-install macnix-gpu-config; do
+    # Check all custom modules are in the copy loop
+    for mod in macnix-welcome macnix-gpu-detect macnix-macos-fetch macnix-gpu-config; do
         if grep -q "$mod" "$P7"; then
             ok "phase7 bundles ${mod}"
         else
@@ -218,7 +220,48 @@ for s in "${SCRIPTS[@]}" "${UTILS[@]}" "${HOOKS[@]}"; do
 done
 
 # ──────────────────────────────────────────────
-header "12. Host build tools check"
+header "12. New component files"
+# ──────────────────────────────────────────────
+NEW_FILES=(
+    "scripts/macnix-auto-install.py"
+    "scripts/macnix-fingerprint-bridge.py"
+    "scripts/macnix-fingerprint"
+    "scripts/macnix-setup-assistant.sh"
+    "scripts/macnix-precheck.sh"
+)
+for nf in "${NEW_FILES[@]}"; do
+    [[ -f "${MACNIX_ROOT}/${nf}" ]] && ok "$nf" || fail "$nf — MISSING"
+done
+
+# Plymouth theme
+PLY_DIR="${MACNIX_ROOT}/plymouth/macnix"
+if [[ -d "$PLY_DIR" ]]; then
+    ok "plymouth/macnix/ theme directory exists"
+    [[ -f "${PLY_DIR}/macnix.plymouth" ]] && ok "  macnix.plymouth" || fail "  macnix.plymouth — MISSING"
+    [[ -f "${PLY_DIR}/macnix.script" ]]   && ok "  macnix.script"   || fail "  macnix.script — MISSING"
+else
+    fail "plymouth/macnix/ — DIRECTORY MISSING"
+fi
+
+# ──────────────────────────────────────────────
+header "13. Required package availability"
+# ──────────────────────────────────────────────
+# These packages must be available in Debian Bookworm repos
+REQUIRED_PKGS=(virt-viewer fprintd libpam-fprintd libsecret-tools gnome-keyring)
+if command -v apt-cache &>/dev/null; then
+    for pkg in "${REQUIRED_PKGS[@]}"; do
+        if apt-cache show "$pkg" &>/dev/null 2>&1; then
+            ok "package '${pkg}' available"
+        else
+            warn "package '${pkg}' not found in apt cache (may need apt update)"
+        fi
+    done
+else
+    warn "apt-cache not available — skipping package checks"
+fi
+
+# ──────────────────────────────────────────────
+header "14. Host build tools check"
 # ──────────────────────────────────────────────
 for cmd in lb debootstrap xorriso; do
     if command -v "$cmd" &>/dev/null; then

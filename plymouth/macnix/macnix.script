@@ -1,0 +1,27 @@
+Window.SetBackgroundTopColor(0.0, 0.0, 0.0);
+Window.SetBackgroundBottomColor(0.0, 0.0, 0.0);
+
+logo = Image("apple-logo.png");
+logo_sprite = Sprite(logo);
+logo_sprite.SetX(Window.GetWidth() / 2 - logo.GetWidth() / 2);
+logo_sprite.SetY(Window.GetHeight() / 2 - logo.GetHeight() / 2 - 40);
+
+progress_bg = Image("progress-bg.png");
+progress_bar = Image("progress-bar.png");
+progress_bg_sprite = Sprite(progress_bg);
+progress_bar_sprite = Sprite(progress_bar);
+
+fun progress_callback(duration, progress) {
+    # Scale progress bar width
+    progress_bar_sprite.SetImage(progress_bar.Scale(
+        progress_bar.GetWidth() * progress, progress_bar.GetHeight()));
+    
+    # Center below logo
+    progress_bg_sprite.SetX(Window.GetWidth() / 2 - progress_bg.GetWidth() / 2);
+    progress_bg_sprite.SetY(Window.GetHeight() / 2 + logo.GetHeight() / 2 + 20);
+    
+    progress_bar_sprite.SetX(Window.GetWidth() / 2 - progress_bg.GetWidth() / 2);
+    progress_bar_sprite.SetY(Window.GetHeight() / 2 + logo.GetHeight() / 2 + 20);
+}
+
+Plymouth.SetBootProgressFunction(progress_callback);

@@ -11,14 +11,10 @@ Presentation {
         onTriggered: presentation.goToNextSlide()
     }
 
-    // Global dark background
+    // Global pure black background
     Rectangle {
         anchors.fill: parent
-        gradient: Gradient {
-            GradientStop { position: 0.0; color: "#0B0C10" }
-            GradientStop { position: 0.5; color: "#1F2833" }
-            GradientStop { position: 1.0; color: "#0B0C10" }
-        }
+        color: "#000000"
         z: -1
     }
 
@@ -41,19 +37,19 @@ Presentation {
             Text {
                 id: t1
                 text: "Welcome to MacNix"
-                color: "#66FCF1"
+                color: "#FFFFFF"
                 font.pixelSize: 36
                 font.weight: Font.Bold
-                font.family: "Sans"
+                font.family: "Inter"
                 anchors.top: logo1.bottom
                 anchors.topMargin: 20
                 anchors.horizontalCenter: parent.horizontalCenter
             }
             Text {
                 text: "The Ultimate macOS Virtualization Platform"
-                color: "#C5C6C7"
+                color: "#8E8E93"
                 font.pixelSize: 17
-                font.family: "Sans"
+                font.family: "Inter"
                 anchors.top: t1.bottom
                 anchors.topMargin: 10
                 anchors.horizontalCenter: parent.horizontalCenter
@@ -76,19 +72,19 @@ Presentation {
             Text {
                 id: t2
                 text: "Intelligent Hardware Profiling"
-                color: "#45A29E"
+                color: "#0A84FF"
                 font.pixelSize: 30
                 font.weight: Font.Bold
-                font.family: "Sans"
+                font.family: "Inter"
                 anchors.top: icon2.bottom
                 anchors.topMargin: 16
                 anchors.horizontalCenter: parent.horizontalCenter
             }
             Text {
                 text: "MacNix automatically detects your CPU, GPU, and IOMMU topology\nto select the optimal passthrough strategy for your hardware."
-                color: "#C5C6C7"
+                color: "#8E8E93"
                 font.pixelSize: 15
-                font.family: "Sans"
+                font.family: "Inter"
                 horizontalAlignment: Text.AlignHCenter
                 anchors.top: t2.bottom
                 anchors.topMargin: 12
@@ -111,20 +107,20 @@ Presentation {
             }
             Text {
                 id: t3
-                text: "Direct from Apple"
-                color: "#66FCF1"
+                text: "Downloading macOS"
+                color: "#30D158"
                 font.pixelSize: 30
                 font.weight: Font.Bold
-                font.family: "Sans"
+                font.family: "Inter"
                 anchors.top: icon3.bottom
                 anchors.topMargin: 16
                 anchors.horizontalCenter: parent.horizontalCenter
             }
             Text {
                 text: "Downloading the official Recovery Image\nsecurely from Apple's CDN — no third-party images."
-                color: "#C5C6C7"
+                color: "#8E8E93"
                 font.pixelSize: 15
-                font.family: "Sans"
+                font.family: "Inter"
                 horizontalAlignment: Text.AlignHCenter
                 anchors.top: t3.bottom
                 anchors.topMargin: 12
@@ -147,20 +143,20 @@ Presentation {
             }
             Text {
                 id: t4
-                text: "GPU Passthrough — Up to 100%"
-                color: "#45A29E"
+                text: "Native Performance"
+                color: "#0A84FF"
                 font.pixelSize: 30
                 font.weight: Font.Bold
-                font.family: "Sans"
+                font.family: "Inter"
                 anchors.top: icon4.bottom
                 anchors.topMargin: 16
                 anchors.horizontalCenter: parent.horizontalCenter
             }
             Text {
-                text: "VFIO, IOMMU groups, and Looking Glass are configured automatically.\nAMD GPUs get native macOS performance via direct passthrough."
-                color: "#C5C6C7"
+                text: "VFIO, CPU pinning, and NUMA alignment are configured automatically.\nEnjoy near-native macOS performance via direct passthrough."
+                color: "#8E8E93"
                 font.pixelSize: 15
-                font.family: "Sans"
+                font.family: "Inter"
                 horizontalAlignment: Text.AlignHCenter
                 anchors.top: t4.bottom
                 anchors.topMargin: 12
@@ -184,19 +180,19 @@ Presentation {
             Text {
                 id: t5
                 text: "Powered by OpenCore"
-                color: "#66FCF1"
+                color: "#FF9F0A"
                 font.pixelSize: 30
                 font.weight: Font.Bold
-                font.family: "Sans"
+                font.family: "Inter"
                 anchors.top: icon5.bottom
                 anchors.topMargin: 16
                 anchors.horizontalCenter: parent.horizontalCenter
             }
             Text {
                 text: "Industry-standard bootloader with unique SMBIOS identities,\nproper NVRAM emulation, and Apple Secure Boot compatibility."
-                color: "#C5C6C7"
+                color: "#8E8E93"
                 font.pixelSize: 15
-                font.family: "Sans"
+                font.family: "Inter"
                 horizontalAlignment: Text.AlignHCenter
                 anchors.top: t5.bottom
                 anchors.topMargin: 12
@@ -224,19 +220,19 @@ Presentation {
             Text {
                 id: t6
                 text: "Almost There"
-                color: "#66FCF1"
+                color: "#FFFFFF"
                 font.pixelSize: 36
                 font.weight: Font.Bold
-                font.family: "Sans"
+                font.family: "Inter"
                 anchors.top: logo6.bottom
                 anchors.topMargin: 16
                 anchors.horizontalCenter: parent.horizontalCenter
             }
             Text {
-                text: "After reboot, MacNix will finalize your hardware config\nand drop you straight into macOS."
-                color: "#C5C6C7"
+                text: "After reboot, macOS will automatically install itself.\nNo manual configuration required."
+                color: "#8E8E93"
                 font.pixelSize: 15
-                font.family: "Sans"
+                font.family: "Inter"
                 horizontalAlignment: Text.AlignHCenter
                 anchors.top: t6.bottom
                 anchors.topMargin: 12

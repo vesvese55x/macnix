@@ -41,6 +41,35 @@ jobs:
         env:
           DEBIAN_FRONTEND: noninteractive
 
+      - name: Validate ISO contents
+        run: |
+          ISO_FILE=$(ls build/output/macnix-*.iso 2>/dev/null | head -1)
+          if [ -z "$ISO_FILE" ]; then
+            echo "::error::No ISO file found in build/output/"
+            exit 1
+          fi
+          echo "Validating ISO: $ISO_FILE"
+          ISO_SIZE=$(stat --format=%s "$ISO_FILE")
+          echo "ISO size: $ISO_SIZE bytes"
+          if [ "$ISO_SIZE" -lt 524288000 ]; then
+            echo "::error::ISO is suspiciously small (<500MB). Build may have failed."
+            exit 1
+          fi
+          # Mount and check for expected files
+          mkdir -p /tmp/iso-mount
+          mount -o loop,ro "$ISO_FILE" /tmp/iso-mount || true
+          for f in live/vmlinuz live/initrd.img live/filesystem.squashfs; do
+            if [ -f "/tmp/iso-mount/$f" ]; then
+              echo "✓ Found $f"
+            else
+              echo "::error::Missing expected file: $f"
+              MISSING=1
+            fi
+          done
+          umount /tmp/iso-mount 2>/dev/null || true
+          [ "${MISSING:-0}" = "1" ] && exit 1
+          echo "✓ ISO validation passed"
+
       - name: Upload ISO artifact
         uses: actions/upload-artifact@v4
         with:
@@ -88,8 +117,8 @@ jobs:
             -monitor unix:/tmp/qemu-monitor.sock,server,nowait \
             -daemonize
             
-          echo "Waiting 180 seconds for XFCE desktop to load..."
-          sleep 180
+          echo "Waiting 300 seconds for Openbox desktop to load..."
+          sleep 300
           
           echo "Capturing screenshot..."
           # Give QEMU time to process the command and dump the file

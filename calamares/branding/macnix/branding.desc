@@ -1,27 +1,41 @@
 ---
 componentName: macnix
+
 strings:
-    productName: MacNix
-    shortProductName: MacNix
-    version: 1.0.0
-    shortVersion: 1.0
-    versionedName: MacNix 1.0
-    shortVersionedName: MacNix 1.0
-    bootloaderEntryName: MacNix
-    productUrl: https://github.com/macnix
-    supportUrl: https://github.com/macnix/issues
-    knownIssuesUrl: https://github.com/macnix/issues
-    releaseNotesUrl: https://github.com/macnix/releases
+    productName:         "MacNix"
+    shortProductName:    "MacNix"
+    version:             2.0.0
+    shortVersion:        2.0
+    versionedName:       "MacNix 2.0"
+    shortVersionedName:  "MacNix 2.0"
+    bootloaderEntryName: "MacNix"
+    productUrl:          "https://github.com/local-over/macnix"
+    supportUrl:          "https://github.com/local-over/macnix/issues"
+    knownIssuesUrl:      "https://github.com/local-over/macnix/issues"
+    releaseNotesUrl:     "https://github.com/local-over/macnix/releases"
+    donateUrl:           "https://github.com/local-over/macnix#donate"
 
 images:
-    productLogo: "macnix_logo.png"
-    productIcon: "macnix_logo.png"
-    productWelcome: "macnix_logo.png"
+    productLogo:         "macnix_logo.png"
+    productIcon:         "macnix_logo.png"
+    productWelcome:      "macnix_logo.png"
 
-slideshow: "show.qml"
+slideshow:               "show.qml"
+slideshowAPI:            2
 
+# === WINDOW ===
+windowExpanding:         fullscreen
+windowSize:              1024px,768px
+windowPlacement:         center
+
+# === CUSTOM QML UI ===
+sidebar:                 qml
+navigation:              qml
+
+# === COLORS ===
 style:
-    sidebarBackground: "#0B0C10"
-    sidebarText: "#C5C6C7"
-    sidebarTextSelect: "#66FCF1"
-    sidebarTextHighlight: "#45A29E"
+    SidebarBackground:        "#0B0C10"
+    SidebarText:              "#8E8E93"
+    SidebarTextSelect:        "#FFFFFF"
+    SidebarTextHighlight:     "#0A84FF"
+    SidebarBackgroundCurrent: "#1C1C1E"
