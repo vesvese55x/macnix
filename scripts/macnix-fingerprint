@@ -1,0 +1,13 @@
+#!/usr/bin/env bash
+# MacNix Fingerprint CLI — wrapper for macnix-fingerprint-bridge.py
+set -euo pipefail
+
+BRIDGE="/opt/macnix/scripts/macnix-fingerprint-bridge.py"
+
+if [[ ! -f "$BRIDGE" ]]; then
+    echo "Error: MacNix fingerprint bridge not found at $BRIDGE"
+    echo "Make sure MacNix is properly installed."
+    exit 1
+fi
+
+exec python3 "$BRIDGE" "$@"

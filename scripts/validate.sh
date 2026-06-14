@@ -58,7 +58,7 @@ done
 # ──────────────────────────────────────────────
 header "4. Calamares modules (must match settings.conf sequence)"
 # ──────────────────────────────────────────────
-MODULES=(macnix-welcome macnix-gpu-detect macnix-macos-fetch macnix-gpu-config)
+MODULES=(macnix-gpu-detect macnix-macos-fetch macnix-gpu-config)
 for mod in "${MODULES[@]}"; do
     dir="${MACNIX_ROOT}/calamares/modules/${mod}"
     if [[ -d "$dir" ]]; then
@@ -165,7 +165,7 @@ if [[ -f "$P7" ]]; then
         warn "phase7 --security may be disabled"
     fi
     # Check all custom modules are in the copy loop
-    for mod in macnix-welcome macnix-gpu-detect macnix-macos-fetch macnix-gpu-config; do
+    for mod in macnix-gpu-detect macnix-macos-fetch macnix-gpu-config; do
         if grep -q "$mod" "$P7"; then
             ok "phase7 bundles ${mod}"
         else
