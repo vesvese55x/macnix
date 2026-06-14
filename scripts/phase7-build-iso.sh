@@ -277,8 +277,10 @@ cp "${MACNIX_ROOT}/scripts/single-gpu-hooks/"*.sh  "${CHROOT_BASE}/opt/macnix/sc
 
 # Fingerprint CLI tool
 mkdir -p "${CHROOT_BASE}/usr/local/bin"
-cp "${MACNIX_ROOT}/scripts/macnix-fingerprint"     "${CHROOT_BASE}/usr/local/bin/"
-chmod +x "${CHROOT_BASE}/usr/local/bin/macnix-fingerprint"
+if [[ -f "${MACNIX_ROOT}/scripts/macnix-fingerprint" ]]; then
+    cp "${MACNIX_ROOT}/scripts/macnix-fingerprint"     "${CHROOT_BASE}/usr/local/bin/"
+    chmod +x "${CHROOT_BASE}/usr/local/bin/macnix-fingerprint"
+fi
 
 chmod +x "${CHROOT_BASE}/opt/macnix/scripts/"*.sh
 chmod +x "${CHROOT_BASE}/opt/macnix/scripts/"*.py 2>/dev/null || true
@@ -292,8 +294,10 @@ cp -r "${MACNIX_ROOT}/config/"* "${CHROOT_BASE}/opt/macnix/config/"
 # Calamares modules
 mkdir -p "${CHROOT_BASE}/usr/lib/calamares/modules"
 # Fix #1: bundle ALL 5 custom modules referenced in settings.conf
-for mod in macnix-welcome macnix-gpu-detect macnix-macos-fetch macnix-macos-install macnix-gpu-config; do
-    cp -r "${MACNIX_ROOT}/calamares/modules/${mod}" "${CHROOT_BASE}/usr/lib/calamares/modules/"
+for mod in macnix-welcome macnix-gpu-detect macnix-macos-fetch macnix-gpu-config; do
+    if [[ -d "${MACNIX_ROOT}/calamares/modules/${mod}" ]]; then
+        cp -r "${MACNIX_ROOT}/calamares/modules/${mod}" "${CHROOT_BASE}/usr/lib/calamares/modules/"
+    fi
 done
 
 # Calamares settings
@@ -383,7 +387,7 @@ bash /opt/macnix/scripts/phase6-ux-setup.sh 2>/dev/null || true
 
 # 7. Enable services
 systemctl enable macnix-vm.service 2>/dev/null || true
-systemctl enable macnix-looking-glass.service 2>/dev/null || true
+systemctl enable macnix-spice-viewer.service 2>/dev/null || true
 
 # Mark done
 touch "$MARKER"
