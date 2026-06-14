@@ -74,10 +74,12 @@ fi
 # Show results
 if command -v zenity >/dev/null 2>&1; then
     if (( CRITICAL_FAIL == 1 )); then
-        zenity --error --title="MacNix - Hardware Requirements" \
-            --text="<b>MacNix cannot be installed on this computer.</b>\n\nThe following requirements were not met:\n\n${LOG}\n\nPlease fix these issues (e.g., check BIOS settings) and try again." \
-            --width=450
-        exit 1
+        zenity --question --title="MacNix - Hardware Requirements" \
+            --text="<b>Some hardware requirements are not met.</b>\n\nThe following issues were detected:\n\n${LOG}\n\nOn bare-metal hardware, ensure VT-x/AMD-V and IOMMU are enabled in BIOS.\n\n<b>Continue anyway?</b>" \
+            --ok-label="Continue Anyway" \
+            --cancel-label="Cancel" \
+            --width=500
+        exit $?
     else
         zenity --info --title="MacNix - Hardware Requirements" \
             --text="<b>Hardware checks passed!</b>\n\n${LOG}\n\nClick OK to launch the MacNix Installer." \
@@ -87,8 +89,5 @@ if command -v zenity >/dev/null 2>&1; then
 else
     # Fallback if zenity is not available
     echo -e "$LOG"
-    if (( CRITICAL_FAIL == 1 )); then
-        exit 1
-    fi
     exit 0
 fi
