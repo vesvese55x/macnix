@@ -132,4 +132,46 @@ jobs:
         with:
           name: boot-screenshot-${{ github.run_number }}
           path: boot-screenshot.png
-          retention-days: 14
+          retention-days: 14  
+
+  # ==========================================
+  # 🚀 YENİ EKLENEN RELEASE ADIMI BURASI
+  # ==========================================
+  release-iso:
+    name: Create GitHub Release
+    needs: [build-iso, test-iso] # Build ve test başarılı olursa release oluşturur
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write # Release oluşturmak için yazma izni şarttır!
+    
+    steps:
+      - name: Download ISO Artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: macnix-iso-${{ github.run_number }}
+          path: output/
+
+      - name: Generate Release Tag
+        id: tag
+        run: |
+          # Tarih ve çalışma numarasına göre otomatik bir versiyon etiketi oluştur (örn: v2.0.0-20240615-42)
+          TAG="v2.0.0-$(date +%Y%m%d)-r${{ github.run_number }}"
+          echo "TAG=$TAG" >> $GITHUB_OUTPUT
+          echo "Oluşturulan Tag: $TAG"
+
+      - name: Create Release and Upload ISO
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ steps.tag.outputs.TAG }}
+          name: "MacNix ISO ${{ steps.tag.outputs.TAG }}"
+          body: |
+            ## 🍎 MacNix Otomatik Build
+            **Çalışma ID:** #${{ github.run_number }}
+            **Commit:** `${{ github.sha }}`
+            **Dal:** `${{ github.ref_name }}`
+            
+            Bu ISO, GitHub Actions üzerinden otomatik olarak derlenmiştir.
+            *(Not: Test aşamasında alınan ekran görüntüsünü "Artifacts" kısmından indirebilirsiniz)*
+          files: output/macnix-*.iso
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
