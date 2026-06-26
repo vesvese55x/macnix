@@ -15,9 +15,7 @@ jobs:
   build-iso:
     name: Build ISO
     runs-on: ubuntu-latest
-    container:
-      image: debian:bookworm
-      options: --privileged
+    # Container KALDIRILDI - Squashfs bozukluğunu çözüyor
     timeout-minutes: 60
 
     steps:
@@ -25,8 +23,9 @@ jobs:
 
       - name: Install live-build tools
         run: |
-          apt-get update
-          apt-get install -y sudo git curl python3 live-build debootstrap xorriso squashfs-tools grub-efi-amd64-bin grub-pc-bin mtools dosfstools isolinux syslinux-common syslinux-utils
+          # Ubuntu runner üzerinde sudo ile kuruluyor
+          sudo apt-get update
+          sudo apt-get install -y git curl python3 live-build debootstrap xorriso squashfs-tools grub-efi-amd64-bin grub-pc-bin mtools dosfstools isolinux syslinux-common syslinux-utils
 
       - name: Cache bootstrap
         uses: actions/cache@v4
@@ -37,7 +36,7 @@ jobs:
 
       - name: Build ISO
         run: |
-          bash scripts/phase7-build-iso.sh
+          sudo bash scripts/phase7-build-iso.sh
         env:
           DEBIAN_FRONTEND: noninteractive
 
@@ -57,7 +56,7 @@ jobs:
           fi
           # Mount and check for expected files
           mkdir -p /tmp/iso-mount
-          mount -o loop,ro "$ISO_FILE" /tmp/iso-mount || true
+          sudo mount -o loop,ro "$ISO_FILE" /tmp/iso-mount || true
           for f in live/vmlinuz live/initrd.img live/filesystem.squashfs; do
             if [ -f "/tmp/iso-mount/$f" ]; then
               echo "✓ Found $f"
@@ -66,7 +65,7 @@ jobs:
               MISSING=1
             fi
           done
-          umount /tmp/iso-mount 2>/dev/null || true
+          sudo umount /tmp/iso-mount 2>/dev/null || true
           [ "${MISSING:-0}" = "1" ] && exit 1
           echo "✓ ISO validation passed"
 
@@ -139,10 +138,10 @@ jobs:
   # ==========================================
   release-iso:
     name: Create GitHub Release
-    needs: [build-iso, test-iso] # Build ve test başarılı olursa release oluşturur
+    needs: [build-iso, test-iso]
     runs-on: ubuntu-latest
     permissions:
-      contents: write # Release oluşturmak için yazma izni şarttır!
+      contents: write
     
     steps:
       - name: Download ISO Artifact
@@ -154,10 +153,17 @@ jobs:
       - name: Generate Release Tag
         id: tag
         run: |
-          # Tarih ve çalışma numarasına göre otomatik bir versiyon etiketi oluştur (örn: v2.0.0-20240615-42)
-          TAG="v2.0.0-$(date +%Y%m%d)-r${{ github.run_number }}"
+          # Etiketin sonuna -BELGESELSEMO eklendi
+          TAG="v2.0.0-$(date +%Y%m%d)-r${{ github.run_number }}-BELGESELSEMO"
           echo "TAG=$TAG" >> $GITHUB_OUTPUT
           echo "Oluşturulan Tag: $TAG"
+
+      - name: Rename ISO File
+        run: |
+          # İndirilen ISO dosyasının adına da eki ekliyoruz
+          mv output/macnix-*.iso "output/macnix-${{ steps.tag.outputs.TAG }}.iso"
+          echo "Dosya yeniden adlandırıldı:"
+          ls -la output/
 
       - name: Create Release and Upload ISO
         uses: softprops/action-gh-release@v2
@@ -165,13 +171,19 @@ jobs:
           tag_name: ${{ steps.tag.outputs.TAG }}
           name: "MacNix ISO ${{ steps.tag.outputs.TAG }}"
           body: |
-            ## 🍎 MacNix Otomatik Build
+            ## 🍎 MacNix Hazır Kurulum ISO'su
+            
             **Çalışma ID:** #${{ github.run_number }}
             **Commit:** `${{ github.sha }}`
             **Dal:** `${{ github.ref_name }}`
             
-            Bu ISO, GitHub Actions üzerinden otomatik olarak derlenmiştir.
+            ---
+            
+            ### ⚠️ Bilgilendirme
+            *   **Orijinal Proje:** Bu müthiş projenin tüm hakları ve geliştirme emeği **[local-over/macnix](https://github.com/local-over/macnix)** reposuna aittir. Geliştirici **Hassan Elkady**'e bu harika iş için buradan teşekkür ederiz! ❤️
+            *   **Bu Repo Ne Yapar?:** Bizler sadece orijinal kodu alıp, GitHub Actions üzerinden sorunsuz bir şekilde doğrudan kurulan ISO dosyasını otomatik olarak derleyip kolayca indirebilmeniz için sunuyoruz.
+            
             *(Not: Test aşamasında alınan ekran görüntüsünü "Artifacts" kısmından indirebilirsiniz)*
-          files: output/macnix-*.iso
+          files: output/macnix-${{ steps.tag.outputs.TAG }}.iso
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
