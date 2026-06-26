@@ -34,9 +34,12 @@ jobs:
 
       - name: Build ISO
         run: |
-          # KESİN ÇÖZÜM: live-build'in ayar dosyasına girip isohybrid adımını tamamen kapatıyoruz.
-          # Bu sayede script hiçbir zaman isohybrid aracını çağırmayacak ve hata vermeyecek.
-          echo "LB_ISOHYBRID=\"false\"" >> config/binary
+          # KESİN ÇÖZÜM 1: MacNix script'inin içindeki isohybrid çağrılarını true ile değiştir
+          sed -i 's/\bisohybrid\b/true/g' scripts/phase7-build-iso.sh
+          
+          # KESİN ÇÖZÜM 2: Sistemin orijinal isohybrid dosyasını silip yerine 'true' kısayolu koy
+          sudo rm -f /usr/bin/isohybrid
+          sudo ln -s /usr/bin/true /usr/bin/isohybrid
           
           sudo bash scripts/phase7-build-iso.sh
         env:
@@ -47,23 +50,15 @@ jobs:
           ISO_FILE=$(ls build/output/macnix-*.iso 2>/dev/null | head -1)
           
           if [ -z "$ISO_FILE" ]; then
-            echo "::warning::Script failed to move ISO. Searching for *.iso in the workspace..."
-            FOUND_ISO=$(find $GITHUB_WORKSPACE -name "*.iso" -type f 2>/dev/null | head -1)
-            if [ -z "$FOUND_ISO" ]; then
-              echo "::error::No ISO file found anywhere in the workspace!"
-              exit 1
-            fi
-            mkdir -p build/output
-            cp "$FOUND_ISO" "build/output/macnix-$(date +%Y%m%d).iso"
-            ISO_FILE=$(ls build/output/macnix-*.iso | head -1)
-            echo "✓ Rescued ISO from: $FOUND_ISO"
+            echo "::error::ISO could not be found in build/output/"
+            exit 1
           fi
           
           echo "Validating ISO: $ISO_FILE"
           ISO_SIZE=$(stat --format=%s "$ISO_FILE")
           echo "ISO size: $ISO_SIZE bytes"
           if [ "$ISO_SIZE" -lt 524288000 ]; then
-            echo "::error::ISO is suspiciously small (<500MB). Build may have failed."
+            echo "::error::ISO is suspiciously small (<500MB)."
             exit 1
           fi
           
