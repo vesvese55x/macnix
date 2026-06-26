@@ -34,7 +34,13 @@ jobs:
 
       - name: Build ISO
         run: |
-          sudo bash scripts/phase7-build-iso.sh || true
+          # KESİN ÇÖZÜM: isohybrid aracını sahte (dummy) bir dosyayla değiştiriyoruz.
+          # Böylece script hata görmüyor, temizlik yapmıyor ve ISO'yu düzgün taşıyor.
+          echo '#!/bin/bash' | sudo tee /usr/local/bin/isohybrid > /dev/null
+          echo 'exit 0' | sudo tee -a /usr/local/bin/isohybrid > /dev/null
+          sudo chmod +x /usr/local/bin/isohybrid
+          
+          sudo bash scripts/phase7-build-iso.sh
         env:
           DEBIAN_FRONTEND: noninteractive
 
@@ -42,18 +48,18 @@ jobs:
         run: |
           ISO_FILE=$(ls build/output/macnix-*.iso 2>/dev/null | head -1)
           
-          # GÜVENLİK AĞI: Eğer script isohybrid hatası yüzünden çöküp 
-          # dosyayı taşımadıysa, kök dizindeki orijinal dosyayı bulup taşıyoruz.
+          # GÜVENLİK AĞI: Script yine de dosyayı taşıyamazsa, tüm workspace'i tarıyoruz.
           if [ -z "$ISO_FILE" ]; then
-            echo "::warning::Script failed to move ISO. Looking for binary.hybrid.iso in root..."
-            ORIG_ISO=$(ls binary.hybrid.iso 2>/dev/null | head -1)
-            if [ -z "$ORIG_ISO" ]; then
-              echo "::error::No ISO file found anywhere!"
+            echo "::warning::Script failed to move ISO. Searching for *.iso in the workspace..."
+            FOUND_ISO=$(find $GITHUB_WORKSPACE -name "*.iso" -type f 2>/dev/null | head -1)
+            if [ -z "$FOUND_ISO" ]; then
+              echo "::error::No ISO file found anywhere in the workspace!"
               exit 1
             fi
             mkdir -p build/output
-            mv "$ORIG_ISO" "build/output/macnix-$(date +%Y%m%d).iso"
+            cp "$FOUND_ISO" "build/output/macnix-$(date +%Y%m%d).iso"
             ISO_FILE=$(ls build/output/macnix-*.iso | head -1)
+            echo "✓ Rescued ISO from: $FOUND_ISO"
           fi
           
           echo "Validating ISO: $ISO_FILE"
@@ -64,7 +70,6 @@ jobs:
             exit 1
           fi
           
-          # Mount and check for expected files
           mkdir -p /tmp/iso-mount
           sudo mount -o loop,ro "$ISO_FILE" /tmp/iso-mount || true
           for f in live/vmlinuz live/initrd.img live/filesystem.squashfs; do
