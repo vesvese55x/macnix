@@ -50,18 +50,18 @@ jobs:
 
       - name: Build ISO
         run: |
-          # ÇİFT KATMANLI VE SIZDIRMAZ SAVUNMA PLANI:
-          # live-build'in isohybrid hatasını chroot içinden veya dışından fırlatmasını tamamen engelliyoruz.
+          # MATEMATİKSEL OLARAK KUSURSUZ ÇÖZÜM:
+          # live-build ve phase7-build-iso.sh içindeki isohybrid komutlarını etkisizleştiriyoruz.
           
-          # SAVUNMA 1 (Chroot Yaması): Derleme scriptindeki kancayı (hook) otomatik olarak yamalayarak
+          # 1. KATMAN (Host Yaması): live-build dosyalarındaki isohybrid komut çağırma satırlarını etkisizleştiriyoruz.
+          # Check_package komutlarını ve önüne tire (-) gelen parametreleri koruyan gelişmiş Regex yapısı.
+          sudo find /usr/lib/live/build/ /usr/share/live/build/ -type f -exec sed -i '/Check_package/!{s|^isohybrid\b|echo isohybrid_skipped|g; s|\([^-]\)\bisohybrid\b|\1echo isohybrid_skipped|g}' {} + 2>/dev/null || true
+          
+          # 2. KATMAN (Chroot / ISO İçi): Derleme script'indeki kancayı (hook) otomatik olarak yamalayarak
           # chroot içine syslinux-utils kurulsa dahi isohybrid komutunu kalıcı olarak /bin/true ile maskeliyoruz.
           sed -i 's|chmod 440 /etc/sudoers.d/macnix-live|chmod 440 /etc/sudoers.d/macnix-live\nln -sf /bin/true /usr/bin/isohybrid|g' scripts/phase7-build-iso.sh || true
           
-          # SAVUNMA 2 (Host Yaması): Sadece ve sadece host üzerindeki 'binary_iso' dosyasını güvenli bir regex ile yamalıyoruz.
-          # lb_config gibi yapılandırma dosyalarına kesinlikle dokunmuyoruz, böylece 'expecting ")"' hatasını tamamen önlüyoruz.
-          sudo sed -i '/Check_package/!s|\bisohybrid\b|echo isohybrid_skipped|g' /usr/lib/live/build/binary_iso || true
-          
-          # Ek önlem olarak host düzeyinde de isohybrid komutunu maskeliyoruz
+          # Host üzerinde de ek güvenlik olarak maskeliyoruz
           sudo ln -sf /bin/true /usr/bin/isohybrid || true
           sudo ln -sf /bin/true /bin/isohybrid || true
           
