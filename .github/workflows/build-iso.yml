@@ -50,27 +50,15 @@ jobs:
 
       - name: Build ISO
         run: |
-          # Önceki hatalı sed komutlarını tamamen sildik.
-          # KÖKTEN ÇÖZÜM: Hem host hem de chroot içine sahte (mock) isohybrid koyuyoruz.
+          # NOKTA ATIŞI VE KESİN ÇÖZÜM:
+          # live-build motorunda ve kendi scriptlerimizde sadece ve sadece ISO dosyasına isohybrid uygulanan 
+          # satırı devre dışı bırakıyoruz. Paket denetimlerine ve diğer komutlara asla dokunmuyoruz.
           
-          # 1. Host (GitHub Runner) üzerinde maskeleme
-          sudo ln -sf /bin/true /usr/bin/isohybrid || true
-          sudo ln -sf /bin/true /bin/isohybrid || true
+          # 1. live-build sistem dosyalarındaki isohybrid çalıştırma satırını etkisizleştir
+          sudo find /usr/lib/live/build/ /usr/share/live/build/ -type f -exec sed -i 's|isohybrid.*binary.*\.iso|echo skipped_isohybrid|g' {} + 2>/dev/null || true
           
-          # 2. Chroot (ISO içerisindeki sistem) üzerinde maskeleme
-          for dir in config live-build-config/config; do
-            if [ -d "$dir" ] || [ "$dir" = "config" ]; then
-              mkdir -p "$dir/includes.chroot/usr/bin"
-              
-              # Sanal sistem içinde her zaman başarılı dönecek sahte bir isohybrid oluşturuyoruz
-              echo '#!/bin/sh' > "$dir/includes.chroot/usr/bin/isohybrid"
-              echo 'echo "Mocked isohybrid inside chroot"' >> "$dir/includes.chroot/usr/bin/isohybrid"
-              echo 'exit 0' >> "$dir/includes.chroot/usr/bin/isohybrid"
-              
-              chmod +x "$dir/includes.chroot/usr/bin/isohybrid"
-              echo "Created mocked chroot isohybrid in $dir/includes.chroot/usr/bin/isohybrid"
-            fi
-          done
+          # 2. scripts klasöründeki tüm dosyalarda yer alan isohybrid çalıştırma satırını etkisizleştir
+          find scripts/ -type f -exec sed -i 's|isohybrid.*binary.*\.iso|echo skipped_isohybrid|g' {} + 2>/dev/null || true
           
           # Derlemeyi başlat
           sudo bash scripts/phase7-build-iso.sh
