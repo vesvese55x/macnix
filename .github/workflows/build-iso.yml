@@ -27,7 +27,6 @@ jobs:
       - name: Fix Calamares unpackfs configuration
         # Calamares'in "Hatalı unpackfs yapılandırması" hatasını çözmek için
         # unpackfs.conf dosyasını oluşturup repoda varsa tüm calamares modüllerini güncelliyoruz.
-        # EOF yerine echo kullanarak girintileme hatalarını tamamen engelledik.
         run: |
           # 1. Standart live-build dizininde oluştur
           mkdir -p config/includes.chroot/etc/calamares/modules
@@ -50,7 +49,14 @@ jobs:
           done
 
       - name: Build ISO
-        run: sudo bash scripts/phase7-build-iso.sh
+        run: |
+          # live-build'in GRUB tabanlı ISO'larda isohybrid çalıştırma hatasını (bug) bypass etmek için
+          # isohybrid komutunu geçici olarak /bin/true ile maskeliyoruz.
+          sudo ln -sf /bin/true /usr/bin/isohybrid || true
+          sudo ln -sf /bin/true /bin/isohybrid || true
+          
+          # Derlemeyi başlat
+          sudo bash scripts/phase7-build-iso.sh
 
       - name: Rename ISO to include -belgeselseo
         # Derlenen ISO dosyasını bulup ismine -belgeselseo ekini ekler
@@ -106,7 +112,7 @@ jobs:
             
             ### Dosya Bilgisi:
             - **Dosya Adı:** `macnix-*-belgeselseo.iso`
-            - **Kurulum:** Calamares `unpackfs` modülünün yaşadığı boş yapılandırma hatası tamamen çözülmüştür.
+            - **Kurulum:** Calamares `unpackfs` yapılandırma hatası tamamen çözülmüştür.
           draft: false
           prerelease: false
           files: build/output/*-belgeselseo.iso
