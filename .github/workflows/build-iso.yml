@@ -45,8 +45,36 @@ jobs:
             zstd \
             apt-utils \
             whois \
-            ovmf \
-            qemu-utils
+            ovmf
+
+      - name: Patch live-build security mirror scripts
+        run: |
+          # live-build'in kendi script dosyalarında bookworm/updates hard-coded geliyor
+          # Bunları bulup bookworm-security ile değiştiriyoruz
+          
+          sudo find /usr/lib/live/build/ -type f | xargs sudo grep -l "bookworm/updates\|/updates" 2>/dev/null | while read f; do
+            echo "Patching: $f"
+            sudo sed -i \
+              's|bookworm/updates|bookworm-security|g' \
+              "$f"
+          done
+
+          sudo find /usr/share/live/build/ -type f | xargs sudo grep -l "bookworm/updates\|/updates" 2>/dev/null | while read f; do
+            echo "Patching: $f"
+            sudo sed -i \
+              's|bookworm/updates|bookworm-security|g' \
+              "$f"
+          done
+
+          # live-build config script'ini de patch et
+          sudo find /usr/bin/ -name "lb*" -type f | xargs sudo grep -l "updates" 2>/dev/null | while read f; do
+            echo "Patching lb binary: $f"
+            sudo sed -i \
+              's|bookworm/updates|bookworm-security|g' \
+              "$f"
+          done
+
+          echo "✅ Patch complete"
 
       - name: Configure live-build
         run: |
@@ -79,19 +107,62 @@ jobs:
             --firmware-chroot true \
             --apt-recommends true
 
-      - name: Fix apt sources for security mirror
+      - name: Patch generated lb config for security mirror
         run: |
           cd live-build-config
 
+          # lb config'in ürettiği dosyaları da patch et
+          find config/ -type f | xargs grep -l "bookworm/updates" 2>/dev/null | while read f; do
+            echo "Patching config: $f"
+            sed -i 's|bookworm/updates|bookworm-security|g' "$f"
+          done
+
+          # config/common dosyasını kontrol et ve düzelt
+          if [ -f config/common ]; then
+            sed -i 's|bookworm/updates|bookworm-security|g' config/common
+            cat config/common | grep -i security || true
+          fi
+
+          # config/chroot dosyasını kontrol et
+          if [ -f config/chroot ]; then
+            sed -i 's|bookworm/updates|bookworm-security|g' config/chroot
+            cat config/chroot | grep -i security || true
+          fi
+
+          # config/binary dosyasını kontrol et
+          if [ -f config/binary ]; then
+            sed -i 's|bookworm/updates|bookworm-security|g' config/binary
+            cat config/binary | grep -i security || true
+          fi
+
+          echo "=== Security mirror config check ==="
+          grep -r "security" config/ || echo "No security entries found in config"
+
+      - name: Override apt sources
+        run: |
+          cd live-build-config
           mkdir -p config/archives
 
-          # Binary (live ISO) için security source
-          cat > config/archives/security.list.binary << 'EOF'
+          # Chroot build sırasında kullanılacak sources
+          cat > config/archives/debian-security.list.chroot << 'EOF'
           deb http://security.debian.org/debian-security bookworm-security main contrib non-free non-free-firmware
           EOF
 
-          # Chroot (build sırasında) için security source
-          cat > config/archives/security.list.chroot << 'EOF'
+          # Binary (ISO içindeki) sources
+          cat > config/archives/debian-security.list.binary << 'EOF'
+          deb http://security.debian.org/debian-security bookworm-security main contrib non-free non-free-firmware
+          EOF
+
+          # Ana sources override
+          cat > config/archives/debian.list.chroot << 'EOF'
+          deb http://deb.debian.org/debian bookworm main contrib non-free non-free-firmware
+          deb http://deb.debian.org/debian bookworm-updates main contrib non-free non-free-firmware
+          deb http://security.debian.org/debian-security bookworm-security main contrib non-free non-free-firmware
+          EOF
+
+          cat > config/archives/debian.list.binary << 'EOF'
+          deb http://deb.debian.org/debian bookworm main contrib non-free non-free-firmware
+          deb http://deb.debian.org/debian bookworm-updates main contrib non-free non-free-firmware
           deb http://security.debian.org/debian-security bookworm-security main contrib non-free non-free-firmware
           EOF
 
@@ -159,6 +230,30 @@ jobs:
           mkdir -p config/hooks/live
           mkdir -p config/hooks/normal
 
+          # EN KRİTİK HOOK: chroot içinde apt sources'u düzelt
+          # Bu hook build sırasında chroot içinde çalışır
+          cat > config/hooks/live/0001-fix-apt-sources.hook.chroot << 'HOOKEOF'
+          #!/bin/sh
+          set -e
+
+          # Yanlış bookworm/updates security URL'ini kaldır
+          if [ -f /etc/apt/sources.list ]; then
+            sed -i '/security\.debian\.org.*bookworm\/updates/d' /etc/apt/sources.list
+            sed -i '/security\.debian\.org.*bookworm-updates/d' /etc/apt/sources.list
+          fi
+
+          # Doğru security URL'ini ekle
+          grep -q "bookworm-security" /etc/apt/sources.list 2>/dev/null || \
+            echo "deb http://security.debian.org/debian-security bookworm-security main contrib non-free non-free-firmware" >> /etc/apt/sources.list
+
+          echo "=== Fixed sources.list ==="
+          cat /etc/apt/sources.list
+
+          # apt cache'i güncelle (hata olsa da devam et)
+          apt-get update 2>&1 | grep -v "bookworm/updates" || true
+          HOOKEOF
+          chmod +x config/hooks/live/0001-fix-apt-sources.hook.chroot
+
           cat > config/hooks/live/0010-fix-locale.hook.chroot << 'EOF'
           #!/bin/sh
           set -e
@@ -184,26 +279,13 @@ jobs:
           EOF
           chmod +x config/hooks/live/0030-sudo-config.hook.chroot
 
-          # Security mirror fix hook - chroot içinde yanlış source'u düzelt
-          cat > config/hooks/live/0005-fix-security-source.hook.chroot << 'EOF'
-          #!/bin/sh
-          set -e
-          # Yanlış bookworm/updates varsa kaldır, doğrusunu ekle
-          sed -i '/bookworm\/updates/d' /etc/apt/sources.list 2>/dev/null || true
-          grep -q "bookworm-security" /etc/apt/sources.list || \
-            echo "deb http://security.debian.org/debian-security bookworm-security main contrib non-free non-free-firmware" >> /etc/apt/sources.list
-          apt-get update -o Acquire::AllowInsecureRepositories=true 2>/dev/null || true
-          EOF
-          chmod +x config/hooks/live/0005-fix-security-source.hook.chroot
-
       - name: Add includes
         run: |
           cd live-build-config
-          mkdir -p config/includes.chroot/etc/skel/.config
+          mkdir -p config/includes.chroot/etc/apt
           mkdir -p config/includes.chroot/etc/macnix
 
-          # Doğru sources.list'i chroot'a göm
-          mkdir -p config/includes.chroot/etc/apt
+          # Doğru sources.list'i chroot'a göm - bu dosya chroot içine kopyalanır
           cat > config/includes.chroot/etc/apt/sources.list << 'EOF'
           deb http://deb.debian.org/debian bookworm main contrib non-free non-free-firmware
           deb http://deb.debian.org/debian bookworm-updates main contrib non-free non-free-firmware
@@ -302,15 +384,21 @@ jobs:
 
           sudo lb clean --purge 2>/dev/null || true
 
+          # Build öncesi son kontrol - üretilen tüm config dosyalarını patch et
+          sudo find . -type f -name "*.list" | xargs grep -l "bookworm/updates" 2>/dev/null | while read f; do
+            echo "Final patch: $f"
+            sudo sed -i 's|security\.debian\.org.*bookworm/updates|security.debian.org/debian-security bookworm-security|g' "$f"
+          done
+
           sudo lb build 2>&1 | tee /tmp/lb-build.log
 
           if ls *.iso 1> /dev/null 2>&1; then
             echo "✅ ISO build successful!"
             ls -lh *.iso
           else
-            echo "❌ ISO build failed - no ISO file found"
-            echo "=== Last 150 lines of build log ==="
-            tail -150 /tmp/lb-build.log
+            echo "❌ ISO build failed"
+            echo "=== Last 200 lines ==="
+            tail -200 /tmp/lb-build.log
             exit 1
           fi
 
@@ -322,19 +410,11 @@ jobs:
           cd live-build-config
           ISO_FILE=$(ls *.iso | head -1)
 
-          if [ -z "$ISO_FILE" ]; then
-            echo "❌ No ISO file found!"
-            exit 1
-          fi
-
-          echo "📀 ISO File: $ISO_FILE"
+          echo "📀 ISO: $ISO_FILE"
           echo "📦 Size: $(du -sh $ISO_FILE | cut -f1)"
-          echo "🔍 File type: $(file $ISO_FILE)"
+          echo "🔍 Type: $(file $ISO_FILE)"
 
-          echo "=== ISO Boot Record ==="
           isoinfo -d -i "$ISO_FILE" || true
-
-          echo "=== Checking hybrid boot ==="
           fdisk -l "$ISO_FILE" || true
 
       - name: Rename ISO
@@ -345,7 +425,7 @@ jobs:
           mv "$ISO_FILE" "$NEW_NAME"
           echo "ISO_FILE=$NEW_NAME" >> $GITHUB_ENV
           echo "ISO_PATH=live-build-config/$NEW_NAME" >> $GITHUB_ENV
-          echo "✅ Renamed to: $NEW_NAME"
+          echo "✅ Renamed: $NEW_NAME"
 
       - name: Upload ISO artifact
         uses: actions/upload-artifact@v4
@@ -371,12 +451,8 @@ jobs:
           name: "MacNix OS Build $(date +%Y-%m-%d)"
           body: |
             ## MacNix OS Automated Build
-
-            **Build Date:** $(date +%Y-%m-%d)
             **Commit:** ${{ github.sha }}
-
-            ### Changes
-            ${{ github.event.head_commit.message }}
+            **Message:** ${{ github.event.head_commit.message }}
 
             ### Flash to USB
             ```bash
