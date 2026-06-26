@@ -73,13 +73,10 @@ jobs:
             --iso-volume "MACNIX_OS" \
             --linux-flavours amd64 \
             --security true \
-            --updates true \
             --backports false \
             --firmware-binary true \
             --firmware-chroot true \
-            --apt-recommends true \
-            --debootstrap-options "--include=apt-transport-https,ca-certificates,gnupg" \
-            "${@}"
+            --apt-recommends true
 
       - name: Add package lists
         run: |
@@ -87,7 +84,6 @@ jobs:
 
           mkdir -p config/package-lists
 
-          # Base packages
           cat > config/package-lists/base.list.chroot << 'EOF'
           live-boot
           live-config
@@ -117,7 +113,6 @@ jobs:
           tzdata
           EOF
 
-          # Desktop environment
           cat > config/package-lists/desktop.list.chroot << 'EOF'
           task-gnome-desktop
           gnome-core
@@ -132,7 +127,6 @@ jobs:
           firefox-esr
           EOF
 
-          # System tools
           cat > config/package-lists/tools.list.chroot << 'EOF'
           nano
           vim
@@ -149,7 +143,6 @@ jobs:
           mkdir -p config/hooks/live
           mkdir -p config/hooks/normal
 
-          # Fix locale
           cat > config/hooks/live/0010-fix-locale.hook.chroot << 'EOF'
           #!/bin/sh
           set -e
@@ -159,7 +152,6 @@ jobs:
           EOF
           chmod +x config/hooks/live/0010-fix-locale.hook.chroot
 
-          # Enable GDM
           cat > config/hooks/live/0020-enable-gdm.hook.chroot << 'EOF'
           #!/bin/sh
           set -e
@@ -168,7 +160,6 @@ jobs:
           EOF
           chmod +x config/hooks/live/0020-enable-gdm.hook.chroot
 
-          # Fix sudo for live user
           cat > config/hooks/live/0030-sudo-config.hook.chroot << 'EOF'
           #!/bin/sh
           set -e
@@ -204,10 +195,6 @@ jobs:
             menu label ^Live System (safe mode)
             linux /live/vmlinuz
             append initrd=/live/initrd.img boot=live components memtest noapic noapm nodma nomce nolapic nosmp vga=normal
-          
-          label memtest
-            menu label ^Memory Test
-            linux /live/memtest
           EOF
 
           cat > config/bootloaders/syslinux/menu.cfg << 'EOF'
@@ -278,16 +265,10 @@ jobs:
         run: |
           cd live-build-config
 
-          # Clean previous build
           sudo lb clean --purge 2>/dev/null || true
 
-          # Set env for build
-          export LB_BOOTSTRAP_INCLUDE="apt-transport-https ca-certificates gnupg"
-
-          # Run build with verbose output
           sudo lb build 2>&1 | tee /tmp/lb-build.log
 
-          # Check if ISO was created
           if ls *.iso 1> /dev/null 2>&1; then
             echo "✅ ISO build successful!"
             ls -lh *.iso
@@ -315,11 +296,9 @@ jobs:
           echo "📦 Size: $(du -sh $ISO_FILE | cut -f1)"
           echo "🔍 File type: $(file $ISO_FILE)"
 
-          # Verify ISO structure
           echo "=== ISO Boot Record ==="
           isoinfo -d -i "$ISO_FILE" || true
 
-          # Check isohybrid
           echo "=== Checking hybrid boot ==="
           fdisk -l "$ISO_FILE" || true
 
@@ -349,7 +328,7 @@ jobs:
           path: /tmp/lb-build.log
           retention-days: 3
 
-      - name: Create Release (on push to master)
+      - name: Create Release
         if: github.event_name == 'push' && github.ref == 'refs/heads/master'
         uses: softprops/action-gh-release@v1
         with:
@@ -364,11 +343,8 @@ jobs:
             ### Changes
             ${{ github.event.head_commit.message }}
             
-            ### Download
-            Download the ISO file below and write it to a USB drive or DVD.
-            
+            ### Download & Flash
             ```bash
-            # Write to USB (replace /dev/sdX with your USB drive)
             sudo dd if=macnix-os-*.iso of=/dev/sdX bs=4M status=progress oflag=sync
             ```
           files: ${{ env.ISO_PATH }}
