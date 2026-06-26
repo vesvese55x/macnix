@@ -15,7 +15,6 @@ jobs:
   build-iso:
     name: Build ISO
     runs-on: ubuntu-latest
-    # Container KALDIRILDI - Squashfs bozukluğunu çözüyor
     timeout-minutes: 60
 
     steps:
@@ -23,7 +22,6 @@ jobs:
 
       - name: Install live-build tools
         run: |
-          # Ubuntu runner üzerinde sudo ile kuruluyor
           sudo apt-get update
           sudo apt-get install -y git curl python3 live-build debootstrap xorriso squashfs-tools grub-efi-amd64-bin grub-pc-bin mtools dosfstools isolinux syslinux-common syslinux-utils
 
@@ -36,8 +34,6 @@ jobs:
 
       - name: Build ISO
         run: |
-          # Ubuntu'da isohybrid sahte hata veriyor, ISO başarıyla oluşuyor (1177MB).
-          # Eğer gerçekten bozuk olsaydı sonraki doğrulama adımı durdururdu.
           sudo bash scripts/phase7-build-iso.sh || true
         env:
           DEBIAN_FRONTEND: noninteractive
@@ -45,10 +41,21 @@ jobs:
       - name: Validate ISO contents
         run: |
           ISO_FILE=$(ls build/output/macnix-*.iso 2>/dev/null | head -1)
+          
+          # GÜVENLİK AĞI: Eğer script isohybrid hatası yüzünden çöküp 
+          # dosyayı taşımadıysa, kök dizindeki orijinal dosyayı bulup taşıyoruz.
           if [ -z "$ISO_FILE" ]; then
-            echo "::error::No ISO file found in build/output/"
-            exit 1
+            echo "::warning::Script failed to move ISO. Looking for binary.hybrid.iso in root..."
+            ORIG_ISO=$(ls binary.hybrid.iso 2>/dev/null | head -1)
+            if [ -z "$ORIG_ISO" ]; then
+              echo "::error::No ISO file found anywhere!"
+              exit 1
+            fi
+            mkdir -p build/output
+            mv "$ORIG_ISO" "build/output/macnix-$(date +%Y%m%d).iso"
+            ISO_FILE=$(ls build/output/macnix-*.iso | head -1)
           fi
+          
           echo "Validating ISO: $ISO_FILE"
           ISO_SIZE=$(stat --format=%s "$ISO_FILE")
           echo "ISO size: $ISO_SIZE bytes"
@@ -56,6 +63,7 @@ jobs:
             echo "::error::ISO is suspiciously small (<500MB). Build may have failed."
             exit 1
           fi
+          
           # Mount and check for expected files
           mkdir -p /tmp/iso-mount
           sudo mount -o loop,ro "$ISO_FILE" /tmp/iso-mount || true
@@ -77,7 +85,7 @@ jobs:
           name: macnix-iso-${{ github.run_number }}
           path: build/output/macnix-*.iso
           retention-days: 14
-          compression-level: 0  # ISO is already compressed
+          compression-level: 0
 
       - name: Upload build log
         if: always()
@@ -108,7 +116,6 @@ jobs:
           ISO_FILE=$(ls output/macnix-*.iso | head -1)
           echo "Booting $ISO_FILE in background (TCG emulation)..."
           
-          # Launch QEMU headlessly with a control socket
           sudo qemu-system-x86_64 \
             -m 4096 \
             -smp 2 \
@@ -122,10 +129,7 @@ jobs:
           sleep 300
           
           echo "Capturing screenshot..."
-          # Give QEMU time to process the command and dump the file
           (echo "screendump screenshot.ppm"; sleep 5) | sudo socat - UNIX-CONNECT:/tmp/qemu-monitor.sock
-          
-          # Convert PPM to PNG
           convert screenshot.ppm boot-screenshot.png || true
           
       - name: Upload Screenshot
@@ -136,7 +140,7 @@ jobs:
           retention-days: 14  
 
   # ==========================================
-  # 🚀 YENİ EKLENEN RELEASE ADIMI BURASI
+  # 🚀 RELEASE ADIMI
   # ==========================================
   release-iso:
     name: Create GitHub Release
@@ -155,14 +159,12 @@ jobs:
       - name: Generate Release Tag
         id: tag
         run: |
-          # Etiketin sonuna -BELGESELSEMO eklendi
           TAG="v2.0.0-$(date +%Y%m%d)-r${{ github.run_number }}-BELGESELSEMO"
           echo "TAG=$TAG" >> $GITHUB_OUTPUT
           echo "Oluşturulan Tag: $TAG"
 
       - name: Rename ISO File
         run: |
-          # İndirilen ISO dosyasının adına da eki ekliyoruz
           mv output/macnix-*.iso "output/macnix-${{ steps.tag.outputs.TAG }}.iso"
           echo "Dosya yeniden adlandırıldı:"
           ls -la output/
