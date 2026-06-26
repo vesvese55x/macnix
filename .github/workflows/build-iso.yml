@@ -1,190 +1,378 @@
-name: Build MacNix ISO
+name: Build Debian ISO
 
 on:
   push:
-    branches: [ master, main ]
+    branches: [ master ]
+  pull_request:
+    branches: [ master ]
   workflow_dispatch:
-    inputs:
-      clean_build:
-        description: 'Force clean build (no cache)'
-        required: false
-        default: 'false'
-        type: boolean
 
 jobs:
   build-iso:
-    name: Build ISO
-    runs-on: ubuntu-latest
-    timeout-minutes: 60
+    runs-on: ubuntu-22.04
+    timeout-minutes: 120
 
     steps:
-      - uses: actions/checkout@v4
+      - name: Checkout repository
+        uses: actions/checkout@v4
 
-      - name: Install live-build tools
+      - name: Install dependencies
         run: |
           sudo apt-get update
-          sudo apt-get install -y git curl python3 live-build debootstrap xorriso squashfs-tools grub-efi-amd64-bin grub-pc-bin mtools dosfstools isolinux syslinux-common syslinux-utils
+          sudo apt-get install -y \
+            live-build \
+            debootstrap \
+            squashfs-tools \
+            xorriso \
+            isolinux \
+            syslinux \
+            syslinux-common \
+            grub-pc-bin \
+            grub-efi-amd64-bin \
+            grub-efi-amd64-signed \
+            shim-signed \
+            mtools \
+            dosfstools \
+            parted \
+            curl \
+            wget \
+            git \
+            rsync \
+            cpio \
+            gzip \
+            bzip2 \
+            xz-utils \
+            zstd \
+            apt-utils \
+            whois \
+            ovmf \
+            qemu-utils
 
-      - name: Cache bootstrap
-        uses: actions/cache@v4
-        with:
-          path: build/cache
-          key: lb-cache-bookworm-${{ hashFiles('scripts/phase7-build-iso.sh') }}
-          restore-keys: lb-cache-bookworm-
+      - name: Configure live-build
+        run: |
+          mkdir -p live-build-config
+          cd live-build-config
+
+          lb config noauto \
+            --architectures amd64 \
+            --mode debian \
+            --distribution bookworm \
+            --archive-areas "main contrib non-free non-free-firmware" \
+            --mirror-bootstrap http://deb.debian.org/debian/ \
+            --mirror-chroot http://deb.debian.org/debian/ \
+            --mirror-binary http://deb.debian.org/debian/ \
+            --mirror-binary-security http://security.debian.org/debian-security/ \
+            --binary-image iso-hybrid \
+            --bootloader "syslinux,grub-efi" \
+            --bootappend-live "boot=live components quiet splash" \
+            --debian-installer none \
+            --memtest none \
+            --iso-application "MacNix OS" \
+            --iso-preparer "MacNix" \
+            --iso-publisher "MacNix" \
+            --iso-volume "MACNIX_OS" \
+            --linux-flavours amd64 \
+            --security true \
+            --updates true \
+            --backports false \
+            --firmware-binary true \
+            --firmware-chroot true \
+            --apt-recommends true \
+            --debootstrap-options "--include=apt-transport-https,ca-certificates,gnupg" \
+            "${@}"
+
+      - name: Add package lists
+        run: |
+          cd live-build-config
+
+          mkdir -p config/package-lists
+
+          # Base packages
+          cat > config/package-lists/base.list.chroot << 'EOF'
+          live-boot
+          live-config
+          live-config-systemd
+          systemd-sysv
+          sudo
+          bash
+          coreutils
+          util-linux
+          procps
+          grep
+          sed
+          gawk
+          findutils
+          tar
+          gzip
+          bzip2
+          xz-utils
+          curl
+          wget
+          ca-certificates
+          gnupg
+          apt-transport-https
+          locales
+          keyboard-configuration
+          console-setup
+          tzdata
+          EOF
+
+          # Desktop environment
+          cat > config/package-lists/desktop.list.chroot << 'EOF'
+          task-gnome-desktop
+          gnome-core
+          gnome-session
+          gnome-shell
+          gnome-terminal
+          gnome-control-center
+          gdm3
+          network-manager
+          network-manager-gnome
+          pulseaudio
+          firefox-esr
+          EOF
+
+          # System tools
+          cat > config/package-lists/tools.list.chroot << 'EOF'
+          nano
+          vim
+          htop
+          neofetch
+          git
+          python3
+          python3-pip
+          EOF
+
+      - name: Add hooks
+        run: |
+          cd live-build-config
+          mkdir -p config/hooks/live
+          mkdir -p config/hooks/normal
+
+          # Fix locale
+          cat > config/hooks/live/0010-fix-locale.hook.chroot << 'EOF'
+          #!/bin/sh
+          set -e
+          echo "en_US.UTF-8 UTF-8" >> /etc/locale.gen
+          locale-gen
+          update-locale LANG=en_US.UTF-8
+          EOF
+          chmod +x config/hooks/live/0010-fix-locale.hook.chroot
+
+          # Enable GDM
+          cat > config/hooks/live/0020-enable-gdm.hook.chroot << 'EOF'
+          #!/bin/sh
+          set -e
+          systemctl enable gdm3 || true
+          systemctl set-default graphical.target || true
+          EOF
+          chmod +x config/hooks/live/0020-enable-gdm.hook.chroot
+
+          # Fix sudo for live user
+          cat > config/hooks/live/0030-sudo-config.hook.chroot << 'EOF'
+          #!/bin/sh
+          set -e
+          echo "user ALL=(ALL) NOPASSWD: ALL" > /etc/sudoers.d/live-user
+          chmod 0440 /etc/sudoers.d/live-user
+          EOF
+          chmod +x config/hooks/live/0030-sudo-config.hook.chroot
+
+      - name: Add includes
+        run: |
+          cd live-build-config
+          mkdir -p config/includes.chroot/etc/skel/.config
+          mkdir -p config/includes.chroot/etc/macnix
+
+          cat > config/includes.chroot/etc/macnix/version << 'EOF'
+          MACNIX_VERSION="1.0"
+          MACNIX_BUILD_DATE="$(date +%Y%m%d)"
+          EOF
+
+      - name: Configure bootloader - SYSLINUX (BIOS)
+        run: |
+          cd live-build-config
+          mkdir -p config/bootloaders/syslinux
+
+          cat > config/bootloaders/syslinux/live.cfg << 'EOF'
+          label live
+            menu label ^Live System
+            menu default
+            linux /live/vmlinuz
+            append initrd=/live/initrd.img boot=live components quiet splash ---
+          
+          label live-safe
+            menu label ^Live System (safe mode)
+            linux /live/vmlinuz
+            append initrd=/live/initrd.img boot=live components memtest noapic noapm nodma nomce nolapic nosmp vga=normal
+          
+          label memtest
+            menu label ^Memory Test
+            linux /live/memtest
+          EOF
+
+          cat > config/bootloaders/syslinux/menu.cfg << 'EOF'
+          ui menu.c32
+          prompt 0
+          timeout 100
+          
+          menu title MacNix OS Boot Menu
+          menu color title        1;37;40
+          menu color border       30;40
+          menu color sel          7;37;40
+          
+          include live.cfg
+          EOF
+
+          cat > config/bootloaders/syslinux/stdmenu.cfg << 'EOF'
+          menu color screen       37;40
+          menu color border       30;40
+          menu color title        1;37;40
+          menu color scrollbar    30;40
+          menu color sel          7;37;40
+          menu color hotsel       1;7;37;40
+          menu color disabled     1;30;40
+          menu color tabmsg       31;40
+          menu color cmdmark      1;36;40
+          menu color cmdline      37;40
+          menu color pwdborder    30;40
+          menu color pwdheader    31;40
+          menu color pwdentry     30;40
+          menu color timeout_msg  37;40
+          menu color timeout      1;37;40
+          menu color help         37;40
+          menu color msg07        37;40
+          EOF
+
+      - name: Configure bootloader - GRUB (EFI)
+        run: |
+          cd live-build-config
+          mkdir -p config/bootloaders/grub-pc
+
+          cat > config/bootloaders/grub-pc/config.cfg << 'EOF'
+          if loadfont /boot/grub/font.pf2 ; then
+            set gfxmode=auto
+            insmod efi_gop
+            insmod efi_uga
+            insmod gfxterm
+            terminal_output gfxterm
+          fi
+
+          set default=0
+          set timeout=10
+          set timeout_style=menu
+
+          menuentry "MacNix OS Live" {
+            search --no-floppy --file --set=root /live/vmlinuz
+            linux /live/vmlinuz boot=live components quiet splash ---
+            initrd /live/initrd.img
+          }
+
+          menuentry "MacNix OS Live (safe mode)" {
+            search --no-floppy --file --set=root /live/vmlinuz
+            linux /live/vmlinuz boot=live components memtest noapic noapm nodma nomce nolapic nosmp vga=normal
+            initrd /live/initrd.img
+          }
+          EOF
 
       - name: Build ISO
         run: |
-          # KESİN ÇÖZÜM 1: MacNix script'inin içindeki isohybrid çağrılarını true ile değiştir
-          sed -i 's/\bisohybrid\b/true/g' scripts/phase7-build-iso.sh
-          
-          # KESİN ÇÖZÜM 2: Sistemin orijinal isohybrid dosyasını silip yerine 'true' kısayolu koy
-          sudo rm -f /usr/bin/isohybrid
-          sudo ln -s /usr/bin/true /usr/bin/isohybrid
-          
-          sudo bash scripts/phase7-build-iso.sh
+          cd live-build-config
+
+          # Clean previous build
+          sudo lb clean --purge 2>/dev/null || true
+
+          # Set env for build
+          export LB_BOOTSTRAP_INCLUDE="apt-transport-https ca-certificates gnupg"
+
+          # Run build with verbose output
+          sudo lb build 2>&1 | tee /tmp/lb-build.log
+
+          # Check if ISO was created
+          if ls *.iso 1> /dev/null 2>&1; then
+            echo "✅ ISO build successful!"
+            ls -lh *.iso
+          else
+            echo "❌ ISO build failed - no ISO file found"
+            echo "=== Last 100 lines of build log ==="
+            tail -100 /tmp/lb-build.log
+            exit 1
+          fi
+
         env:
           DEBIAN_FRONTEND: noninteractive
 
-      - name: Validate ISO contents
+      - name: Verify ISO
         run: |
-          ISO_FILE=$(ls build/output/macnix-*.iso 2>/dev/null | head -1)
-          
+          cd live-build-config
+          ISO_FILE=$(ls *.iso | head -1)
+
           if [ -z "$ISO_FILE" ]; then
-            echo "::error::ISO could not be found in build/output/"
+            echo "❌ No ISO file found!"
             exit 1
           fi
-          
-          echo "Validating ISO: $ISO_FILE"
-          ISO_SIZE=$(stat --format=%s "$ISO_FILE")
-          echo "ISO size: $ISO_SIZE bytes"
-          if [ "$ISO_SIZE" -lt 524288000 ]; then
-            echo "::error::ISO is suspiciously small (<500MB)."
-            exit 1
-          fi
-          
-          mkdir -p /tmp/iso-mount
-          sudo mount -o loop,ro "$ISO_FILE" /tmp/iso-mount || true
-          for f in live/vmlinuz live/initrd.img live/filesystem.squashfs; do
-            if [ -f "/tmp/iso-mount/$f" ]; then
-              echo "✓ Found $f"
-            else
-              echo "::error::Missing expected file: $f"
-              MISSING=1
-            fi
-          done
-          sudo umount /tmp/iso-mount 2>/dev/null || true
-          [ "${MISSING:-0}" = "1" ] && exit 1
-          echo "✓ ISO validation passed"
+
+          echo "📀 ISO File: $ISO_FILE"
+          echo "📦 Size: $(du -sh $ISO_FILE | cut -f1)"
+          echo "🔍 File type: $(file $ISO_FILE)"
+
+          # Verify ISO structure
+          echo "=== ISO Boot Record ==="
+          isoinfo -d -i "$ISO_FILE" || true
+
+          # Check isohybrid
+          echo "=== Checking hybrid boot ==="
+          fdisk -l "$ISO_FILE" || true
+
+      - name: Rename ISO
+        run: |
+          cd live-build-config
+          ISO_FILE=$(ls *.iso | head -1)
+          NEW_NAME="macnix-os-$(date +%Y%m%d%H%M)-amd64.iso"
+          mv "$ISO_FILE" "$NEW_NAME"
+          echo "ISO_FILE=$NEW_NAME" >> $GITHUB_ENV
+          echo "ISO_PATH=live-build-config/$NEW_NAME" >> $GITHUB_ENV
+          echo "✅ Renamed to: $NEW_NAME"
 
       - name: Upload ISO artifact
         uses: actions/upload-artifact@v4
         with:
-          name: macnix-iso-${{ github.run_number }}
-          path: build/output/macnix-*.iso
-          retention-days: 14
-          compression-level: 0
+          name: macnix-os-iso
+          path: ${{ env.ISO_PATH }}
+          retention-days: 7
+          if-no-files-found: error
 
       - name: Upload build log
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: build-log-${{ github.run_number }}
-          path: build/build.log
-          retention-days: 7
+          name: build-log
+          path: /tmp/lb-build.log
+          retention-days: 3
 
-  test-iso:
-    name: Test ISO Boot
-    needs: build-iso
-    runs-on: ubuntu-latest
-    steps:
-      - name: Install QEMU & Tools
-        run: |
-          sudo apt-get update
-          sudo apt-get install -y qemu-system-x86 qemu-utils socat imagemagick
-
-      - name: Download ISO artifact
-        uses: actions/download-artifact@v4
+      - name: Create Release (on push to master)
+        if: github.event_name == 'push' && github.ref == 'refs/heads/master'
+        uses: softprops/action-gh-release@v1
         with:
-          name: macnix-iso-${{ github.run_number }}
-          path: output/
-
-      - name: Boot ISO in QEMU
-        run: |
-          ISO_FILE=$(ls output/macnix-*.iso | head -1)
-          echo "Booting $ISO_FILE in background (TCG emulation)..."
-          
-          sudo qemu-system-x86_64 \
-            -m 4096 \
-            -smp 2 \
-            -cdrom "$ISO_FILE" \
-            -vga std \
-            -display none \
-            -monitor unix:/tmp/qemu-monitor.sock,server,nowait \
-            -daemonize
-            
-          echo "Waiting 300 seconds for Openbox desktop to load..."
-          sleep 300
-          
-          echo "Capturing screenshot..."
-          (echo "screendump screenshot.ppm"; sleep 5) | sudo socat - UNIX-CONNECT:/tmp/qemu-monitor.sock
-          convert screenshot.ppm boot-screenshot.png || true
-          
-      - name: Upload Screenshot
-        uses: actions/upload-artifact@v4
-        with:
-          name: boot-screenshot-${{ github.run_number }}
-          path: boot-screenshot.png
-          retention-days: 14  
-
-  # ==========================================
-  # 🚀 RELEASE ADIMI
-  # ==========================================
-  release-iso:
-    name: Create GitHub Release
-    needs: [build-iso, test-iso]
-    runs-on: ubuntu-latest
-    permissions:
-      contents: write
-    
-    steps:
-      - name: Download ISO Artifact
-        uses: actions/download-artifact@v4
-        with:
-          name: macnix-iso-${{ github.run_number }}
-          path: output/
-
-      - name: Generate Release Tag
-        id: tag
-        run: |
-          TAG="v2.0.0-$(date +%Y%m%d)-r${{ github.run_number }}-BELGESELSEMO"
-          echo "TAG=$TAG" >> $GITHUB_OUTPUT
-          echo "Oluşturulan Tag: $TAG"
-
-      - name: Rename ISO File
-        run: |
-          mv output/macnix-*.iso "output/macnix-${{ steps.tag.outputs.TAG }}.iso"
-          echo "Dosya yeniden adlandırıldı:"
-          ls -la output/
-
-      - name: Create Release and Upload ISO
-        uses: softprops/action-gh-release@v2
-        with:
-          tag_name: ${{ steps.tag.outputs.TAG }}
-          name: "MacNix ISO ${{ steps.tag.outputs.TAG }}"
+          tag_name: "v$(date +%Y%m%d%H%M)"
+          name: "MacNix OS Build $(date +%Y-%m-%d)"
           body: |
-            ## 🍎 MacNix Hazır Kurulum ISO'su
+            ## MacNix OS Automated Build
             
-            **Çalışma ID:** #${{ github.run_number }}
-            **Commit:** `${{ github.sha }}`
-            **Dal:** `${{ github.ref_name }}`
+            **Build Date:** $(date +%Y-%m-%d)
+            **Commit:** ${{ github.sha }}
             
-            ---
+            ### Changes
+            ${{ github.event.head_commit.message }}
             
-            ### ⚠️ Bilgilendirme
-            *   **Orijinal Proje:** Bu müthiş projenin tüm hakları ve geliştirme emeği **[local-over/macnix](https://github.com/local-over/macnix)** reposuna aittir. Geliştirici **Hassan Elkady**'e bu harika iş için buradan teşekkür ederiz! ❤️
-            *   **Bu Repo Ne Yapar?:** Bizler sadece orijinal kodu alıp, GitHub Actions üzerinden sorunsuz bir şekilde doğrudan kurulan ISO dosyasını otomatik olarak derleyip kolayca indirebilmeniz için sunuyoruz.
+            ### Download
+            Download the ISO file below and write it to a USB drive or DVD.
             
-            *(Not: Test aşamasında alınan ekran görüntüsünü "Artifacts" kısmından indirebilirsiniz)*
-          files: output/macnix-${{ steps.tag.outputs.TAG }}.iso
+            ```bash
+            # Write to USB (replace /dev/sdX with your USB drive)
+            sudo dd if=macnix-os-*.iso of=/dev/sdX bs=4M status=progress oflag=sync
+            ```
+          files: ${{ env.ISO_PATH }}
+          draft: false
+          prerelease: false
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
