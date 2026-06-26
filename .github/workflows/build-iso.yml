@@ -37,10 +37,11 @@ jobs:
         run: |
           sudo apt-get update
           
-          # live-build'i bu listeden çıkardık çünkü Ubuntu 24.04 depolarından silindi.
-          # Diğer tüm bağımlılıkları standart şekilde kuruyoruz.
+          # Anahtarlık hatasını çözmek için debian-archive-keyring ve debian-keyring paketlerini ekledik.
           sudo apt-get install -y \
             debootstrap \
+            debian-archive-keyring \
+            debian-keyring \
             squashfs-tools \
             xorriso \
             isolinux \
