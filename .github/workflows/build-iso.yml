@@ -9,7 +9,7 @@ on:
 
 jobs:
   build-iso:
-    runs-on: ubuntu-22.04
+    runs-on: ubuntu-latest # ubuntu-22.04 yerine en günceli kullanmak daha iyidir
     timeout-minutes: 120
 
     steps:
@@ -17,8 +17,12 @@ jobs:
         uses: actions/checkout@v4
 
       - name: Install dependencies
+        env:
+          DEBIAN_FRONTEND: noninteractive
         run: |
           sudo apt-get update
+          # Sadece ISO oluşturmak için gerekli olan host paketlerini kuruyoruz.
+          # shim-signed ve signed grub paketleri hostta gerekmez, hata verir.
           sudo apt-get install -y \
             live-build \
             debootstrap \
@@ -29,8 +33,6 @@ jobs:
             syslinux-common \
             grub-pc-bin \
             grub-efi-amd64-bin \
-            grub-efi-amd64-signed \
-            shim-signed \
             mtools \
             dosfstools \
             parted \
@@ -52,9 +54,6 @@ jobs:
           mkdir -p live-build-config
           cd live-build-config
 
-          # --security false yapıyoruz çünkü live-build'in
-          # kendi ürettiği security mirror URL'i yanlış (bookworm/updates)
-          # Doğru security URL'ini kendimiz hook ile ekleyeceğiz
           lb config noauto \
             --architectures amd64 \
             --mode debian \
@@ -169,190 +168,44 @@ jobs:
           EOF
           chmod +x config/hooks/live/0030-sudo-config.hook.chroot
 
-      - name: Add includes - clean sources.list only
+      - name: Add includes
         run: |
           cd live-build-config
           mkdir -p config/includes.chroot/etc/apt
-          mkdir -p config/includes.chroot/etc/apt/sources.list.d
-          mkdir -p config/includes.chroot/etc/macnix
-
-          # TEK bir sources.list - security dahil her şey burada
-          # sources.list.d/ boş bırakıyoruz - çakışma olmasın
+          
           cat > config/includes.chroot/etc/apt/sources.list << 'EOF'
           deb http://deb.debian.org/debian bookworm main contrib non-free non-free-firmware
           deb http://deb.debian.org/debian bookworm-updates main contrib non-free non-free-firmware
           deb http://security.debian.org/debian-security bookworm-security main contrib non-free non-free-firmware
           EOF
-
-          # sources.list.d altındaki her şeyi temizle (live-build orayı kullanır)
-          # Boş placeholder koy ki live-build'in ürettikleri çakışmasın
-          touch config/includes.chroot/etc/apt/sources.list.d/.keep
-
+          
+          mkdir -p config/includes.chroot/etc/macnix
           cat > config/includes.chroot/etc/macnix/version << 'EOF'
           MACNIX_VERSION="1.0"
-          EOF
-
-      - name: Configure bootloader - SYSLINUX (BIOS)
-        run: |
-          cd live-build-config
-          mkdir -p config/bootloaders/syslinux
-
-          cat > config/bootloaders/syslinux/live.cfg << 'EOF'
-          label live
-            menu label ^Live System
-            menu default
-            linux /live/vmlinuz
-            append initrd=/live/initrd.img boot=live components quiet splash ---
-
-          label live-safe
-            menu label ^Live System (safe mode)
-            linux /live/vmlinuz
-            append initrd=/live/initrd.img boot=live components noapic noapm nodma nomce nolapic nosmp vga=normal
-          EOF
-
-          cat > config/bootloaders/syslinux/menu.cfg << 'EOF'
-          ui menu.c32
-          prompt 0
-          timeout 100
-
-          menu title MacNix OS Boot Menu
-          menu color title        1;37;40
-          menu color border       30;40
-          menu color sel          7;37;40
-
-          include live.cfg
-          EOF
-
-          cat > config/bootloaders/syslinux/stdmenu.cfg << 'EOF'
-          menu color screen       37;40
-          menu color border       30;40
-          menu color title        1;37;40
-          menu color scrollbar    30;40
-          menu color sel          7;37;40
-          menu color hotsel       1;7;37;40
-          menu color disabled     1;30;40
-          menu color tabmsg       31;40
-          menu color cmdmark      1;36;40
-          menu color cmdline      37;40
-          menu color pwdborder    30;40
-          menu color pwdheader    31;40
-          menu color pwdentry     30;40
-          menu color timeout_msg  37;40
-          menu color timeout      1;37;40
-          menu color help         37;40
-          menu color msg07        37;40
-          EOF
-
-      - name: Configure bootloader - GRUB (EFI)
-        run: |
-          cd live-build-config
-          mkdir -p config/bootloaders/grub-pc
-
-          cat > config/bootloaders/grub-pc/config.cfg << 'EOF'
-          if loadfont /boot/grub/font.pf2 ; then
-            set gfxmode=auto
-            insmod efi_gop
-            insmod efi_uga
-            insmod gfxterm
-            terminal_output gfxterm
-          fi
-
-          set default=0
-          set timeout=10
-          set timeout_style=menu
-
-          menuentry "MacNix OS Live" {
-            search --no-floppy --file --set=root /live/vmlinuz
-            linux /live/vmlinuz boot=live components quiet splash ---
-            initrd /live/initrd.img
-          }
-
-          menuentry "MacNix OS Live (safe mode)" {
-            search --no-floppy --file --set=root /live/vmlinuz
-            linux /live/vmlinuz boot=live components noapic noapm nodma nomce nolapic nosmp vga=normal
-            initrd /live/initrd.img
-          }
           EOF
 
       - name: Build ISO
         run: |
           cd live-build-config
-
           sudo lb clean --purge 2>/dev/null || true
-
-          # config/archives klasörü OLMAMALI - live-build bunu sources olarak ekler
-          # ve çakışmaya yol açar. Varsa sil.
           rm -rf config/archives
-
+          
+          # Build işlemi
           sudo lb build 2>&1 | tee /tmp/lb-build.log
-
+          
+          # Hata kontrolü
           if ls *.iso 1> /dev/null 2>&1; then
             echo "✅ ISO build successful!"
-            ls -lh *.iso
           else
             echo "❌ ISO build failed"
-            tail -200 /tmp/lb-build.log
             exit 1
           fi
-
         env:
           DEBIAN_FRONTEND: noninteractive
-
-      - name: Verify ISO
-        run: |
-          cd live-build-config
-          ISO_FILE=$(ls *.iso | head -1)
-
-          echo "📀 ISO: $ISO_FILE"
-          echo "📦 Size: $(du -sh $ISO_FILE | cut -f1)"
-          echo "🔍 Type: $(file $ISO_FILE)"
-
-          isoinfo -d -i "$ISO_FILE" || true
-          fdisk -l "$ISO_FILE" || true
-
-      - name: Rename ISO
-        run: |
-          cd live-build-config
-          ISO_FILE=$(ls *.iso | head -1)
-          NEW_NAME="macnix-os-$(date +%Y%m%d%H%M)-amd64.iso"
-          mv "$ISO_FILE" "$NEW_NAME"
-          echo "ISO_FILE=$NEW_NAME" >> $GITHUB_ENV
-          echo "ISO_PATH=live-build-config/$NEW_NAME" >> $GITHUB_ENV
-          echo "✅ Renamed: $NEW_NAME"
 
       - name: Upload ISO artifact
         uses: actions/upload-artifact@v4
         with:
           name: macnix-os-iso
-          path: ${{ env.ISO_PATH }}
-          retention-days: 7
+          path: live-build-config/*.iso
           if-no-files-found: error
-
-      - name: Upload build log
-        if: always()
-        uses: actions/upload-artifact@v4
-        with:
-          name: build-log
-          path: /tmp/lb-build.log
-          retention-days: 3
-
-      - name: Create Release
-        if: github.event_name == 'push' && github.ref == 'refs/heads/master'
-        uses: softprops/action-gh-release@v1
-        with:
-          tag_name: "v$(date +%Y%m%d%H%M)"
-          name: "MacNix OS Build $(date +%Y-%m-%d)"
-          body: |
-            ## MacNix OS Automated Build
-            **Commit:** ${{ github.sha }}
-            **Message:** ${{ github.event.head_commit.message }}
-
-            ### Flash to USB
-            ```bash
-            sudo dd if=macnix-os-*.iso of=/dev/sdX bs=4M status=progress oflag=sync
-            ```
-          files: ${{ env.ISO_PATH }}
-          draft: false
-          prerelease: false
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
