@@ -51,17 +51,17 @@ jobs:
       - name: Build ISO
         run: |
           # ÇİFT KATMANLI VE SIZDIRMAZ SAVUNMA PLANI:
-          # isohybrid komutunun hem host hem de chroot (ISO içi) düzeyinde hata vermesini kalıcı olarak engelliyoruz.
+          # live-build'in isohybrid hatasını chroot içinden veya dışından fırlatmasını tamamen engelliyoruz.
           
-          # 1. KATMAN (Host): live-build motorunun isohybrid çağıran satırlarını etkisizleştiriyoruz.
-          # Check_package komutlarına dokunmayan akıllı filtreleme (Regex) uyguluyoruz (paket denetimleri bozulmaz).
-          sudo find /usr/lib/live/build/ /usr/share/live/build/ -type f -exec sed -i '/Check_package/!s|\bisohybrid\b|echo isohybrid_skipped|g' {} + 2>/dev/null || true
+          # SAVUNMA 1 (Chroot Yaması): Derleme scriptindeki kancayı (hook) otomatik olarak yamalayarak
+          # chroot içine syslinux-utils kurulsa dahi isohybrid komutunu kalıcı olarak /bin/true ile maskeliyoruz.
+          sed -i 's|chmod 440 /etc/sudoers.d/macnix-live|chmod 440 /etc/sudoers.d/macnix-live\nln -sf /bin/true /usr/bin/isohybrid|g' scripts/phase7-build-iso.sh || true
           
-          # 2. KATMAN (Chroot / ISO İçi): Derleme script'ine kanca (hook) enjekte ediyoruz.
-          # Chroot içerisine syslinux-utils kurulduktan hemen sonra isohybrid'i kalıcı olarak /bin/true ile maskeliyoruz.
-          sed -i 's|chmod 440 /etc/sudoers.d/macnix-live|chmod 440 /etc/sudoers.d/macnix-live\n# Mask isohybrid\nln -sf /bin/true /usr/bin/isohybrid \|\| true|g' scripts/phase7-build-iso.sh || true
+          # SAVUNMA 2 (Host Yaması): Sadece ve sadece host üzerindeki 'binary_iso' dosyasını güvenli bir regex ile yamalıyoruz.
+          # lb_config gibi yapılandırma dosyalarına kesinlikle dokunmuyoruz, böylece 'expecting ")"' hatasını tamamen önlüyoruz.
+          sudo sed -i '/Check_package/!s|\bisohybrid\b|echo isohybrid_skipped|g' /usr/lib/live/build/binary_iso || true
           
-          # Host üzerinde de ek güvenlik olarak maskeliyoruz
+          # Ek önlem olarak host düzeyinde de isohybrid komutunu maskeliyoruz
           sudo ln -sf /bin/true /usr/bin/isohybrid || true
           sudo ln -sf /bin/true /bin/isohybrid || true
           
