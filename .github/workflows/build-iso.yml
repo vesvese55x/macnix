@@ -34,12 +34,14 @@ jobs:
 
       - name: Build ISO
         run: |
-          # KESİN ÇÖZÜM: isohybrid aracını sahte (dummy) bir dosyayla değiştiriyoruz.
-          # Böylece script hata görmüyor, temizlik yapmıyor ve ISO'yu düzgün taşıyor.
-          echo '#!/bin/bash' | sudo tee /usr/local/bin/isohybrid > /dev/null
-          echo 'exit 0' | sudo tee -a /usr/local/bin/isohybrid > /dev/null
-          sudo chmod +x /usr/local/bin/isohybrid
+          # KESİN ÇÖZÜM: Sistemin orijinal isohybrid aracını (/usr/bin/) devre dışı bırakıyoruz.
+          # Önceki denemede /usr/local/bin/ kullandığımız için sistem o dosyayı görmedi.
+          sudo mv /usr/bin/isohybrid /usr/bin/isohybrid.real 2>/dev/null || true
+          echo '#!/bin/bash' | sudo tee /usr/bin/isohybrid > /dev/null
+          echo 'exit 0' | sudo tee -a /usr/bin/isohybrid > /dev/null
+          sudo chmod +x /usr/bin/isohybrid
           
+          # Artık script isohybrid çağırdığında "her şey yolunda" diyecektir.
           sudo bash scripts/phase7-build-iso.sh
         env:
           DEBIAN_FRONTEND: noninteractive
@@ -48,7 +50,7 @@ jobs:
         run: |
           ISO_FILE=$(ls build/output/macnix-*.iso 2>/dev/null | head -1)
           
-          # GÜVENLİK AĞI: Script yine de dosyayı taşıyamazsa, tüm workspace'i tarıyoruz.
+          # Güvenlik ağı: Script yine de takılırsa tüm dizini tarıyoruz.
           if [ -z "$ISO_FILE" ]; then
             echo "::warning::Script failed to move ISO. Searching for *.iso in the workspace..."
             FOUND_ISO=$(find $GITHUB_WORKSPACE -name "*.iso" -type f 2>/dev/null | head -1)
