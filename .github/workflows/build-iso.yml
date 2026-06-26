@@ -36,13 +36,14 @@ jobs:
           DEBIAN_FRONTEND: noninteractive
         run: |
           sudo apt-get update
+          
+          # live-build'i bu listeden çıkardık çünkü Ubuntu 24.04 depolarından silindi.
+          # Diğer tüm bağımlılıkları standart şekilde kuruyoruz.
           sudo apt-get install -y \
-            live-build \
             debootstrap \
             squashfs-tools \
             xorriso \
             isolinux \
-            syslinux \
             syslinux-common \
             grub-pc-bin \
             grub-efi-amd64-bin \
@@ -62,9 +63,15 @@ jobs:
             whois \
             ovmf
 
+          # live-build paketini Debian'ın resmi havuzundan manuel indirip kuruyoruz (Ubuntu 24.04 uyumlu)
+          wget http://ftp.debian.org/debian/pool/main/l/live-build/live-build_20230502_all.deb
+          sudo dpkg -i live-build_20230502_all.deb || sudo apt-get install -f -y
+
+          # live-build'in Contents-amd64.gz hatasını yama ile gideriyoruz
+          sudo sed -i 's|dists/${LB_PARENT_DISTRIBUTION}/Contents-${LB_ARCHITECTURES}.gz|dists/${LB_PARENT_DISTRIBUTION}/main/Contents-${LB_ARCHITECTURES}.gz|g' /usr/lib/live/build/lb_chroot_linux-image || true
+          sudo sed -i 's|dists/${LB_DISTRIBUTION}/Contents-${LB_ARCHITECTURES}.gz|dists/${LB_DISTRIBUTION}/main/Contents-${LB_ARCHITECTURES}.gz|g' /usr/lib/live/build/lb_chroot_linux-image || true
+
       - name: Pre-download Contents cache for live-build
-        # live-build'in sorunlu wget indirmesini bypass etmek için
-        # Contents-amd64 dosyasını güvenli bir şekilde önceden indirip cache dizinine yerleştiriyoruz.
         run: |
           mkdir -p live-build-config/cache/contents.chroot
           curl -fL -o live-build-config/cache/contents.chroot/contents.bookworm.amd64.gz http://deb.debian.org/debian/dists/bookworm/main/Contents-amd64.gz
@@ -72,6 +79,7 @@ jobs:
 
       - name: Configure live-build
         run: |
+          mkdir -p live-build-config
           cd live-build-config
           sudo lb clean --purge
 
@@ -208,9 +216,7 @@ jobs:
           MACNIX_VERSION="1.0"
           EOF
 
-          # GÖRSELDEKİ HATAYI DÜZELTEN ADIM:
-          # Calamares'in squashfs dosyasını bularak diske çıkartabilmesi için 
-          # 100% çalışan standart unpackfs yapılandırmasını oluşturuyoruz.
+          # Calamares'in kurulum aşamasında hata vermemesi için gerekli yapılandırma
           mkdir -p config/includes.chroot/etc/calamares/modules
           cat > config/includes.chroot/etc/calamares/modules/unpackfs.conf << 'EOF'
           # SPDX-FileCopyrightText: no
