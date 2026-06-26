@@ -50,10 +50,10 @@ jobs:
 
       - name: Build ISO
         run: |
-          # live-build'in GRUB tabanlı ISO'larda isohybrid çalıştırma hatasını (bug) bypass etmek için
-          # isohybrid komutunu geçici olarak /bin/true ile maskeliyoruz.
-          sudo ln -sf /bin/true /usr/bin/isohybrid || true
-          sudo ln -sf /bin/true /bin/isohybrid || true
+          # KESİN ÇÖZÜM: live-build'in chroot içinde dahi isohybrid çalıştırmasını engellemek için
+          # sistemdeki tüm live-build şablonlarında ve kendi derleme scriptimizde "isohybrid" komut çağrısını bypass ediyoruz.
+          sudo find /usr/lib/live/build/ /usr/share/live/build/ -type f -exec sed -i 's|isohybrid |echo isohybrid_skipped |g' {} + 2>/dev/null || true
+          sed -i 's|isohybrid |echo isohybrid_skipped |g' scripts/phase7-build-iso.sh || true
           
           # Derlemeyi başlat
           sudo bash scripts/phase7-build-iso.sh
