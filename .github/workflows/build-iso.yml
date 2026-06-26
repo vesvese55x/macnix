@@ -34,12 +34,9 @@ jobs:
 
       - name: Build ISO
         run: |
-          # KESİN ÇÖZÜM: dpkg-divert ile isohybrid'ı sahte dosyayla değiştiriyoruz.
-          # Bu sayede script içinden syslinux yüklense bile sahte dosyamız korunur.
-          sudo dpkg-divert --add --rename --divert /usr/bin/isohybrid.real /usr/bin/isohybrid
-          echo '#!/bin/bash' | sudo tee /usr/bin/isohybrid > /dev/null
-          echo 'exit 0' | sudo tee -a /usr/bin/isohybrid > /dev/null
-          sudo chmod +x /usr/bin/isohybrid
+          # KESİN ÇÖZÜM: live-build'in ayar dosyasına girip isohybrid adımını tamamen kapatıyoruz.
+          # Bu sayede script hiçbir zaman isohybrid aracını çağırmayacak ve hata vermeyecek.
+          echo "LB_ISOHYBRID=\"false\"" >> config/binary
           
           sudo bash scripts/phase7-build-iso.sh
         env:
@@ -49,7 +46,6 @@ jobs:
         run: |
           ISO_FILE=$(ls build/output/macnix-*.iso 2>/dev/null | head -1)
           
-          # Güvenlik ağı: Script yine de takılırsa tüm dizini tarıyoruz.
           if [ -z "$ISO_FILE" ]; then
             echo "::warning::Script failed to move ISO. Searching for *.iso in the workspace..."
             FOUND_ISO=$(find $GITHUB_WORKSPACE -name "*.iso" -type f 2>/dev/null | head -1)
