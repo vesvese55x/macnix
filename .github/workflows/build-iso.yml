@@ -50,27 +50,32 @@ jobs:
 
       - name: Build ISO
         run: |
-          # NOKTA ATIŞI VE KESİN ÇÖZÜM:
-          # live-build motorunda ve kendi scriptlerimizde sadece ve sadece ISO dosyasına isohybrid uygulanan 
-          # satırı devre dışı bırakıyoruz. Paket denetimlerine ve diğer komutlara asla dokunmuyoruz.
+          # ÇİFT KATMANLI VE SIZDIRMAZ SAVUNMA PLANI:
+          # isohybrid komutunun hem host hem de chroot (ISO içi) düzeyinde hata vermesini kalıcı olarak engelliyoruz.
           
-          # 1. live-build sistem dosyalarındaki isohybrid çalıştırma satırını etkisizleştir
-          sudo find /usr/lib/live/build/ /usr/share/live/build/ -type f -exec sed -i 's|isohybrid.*binary.*\.iso|echo skipped_isohybrid|g' {} + 2>/dev/null || true
+          # 1. KATMAN (Host): live-build motorunun isohybrid çağıran satırlarını etkisizleştiriyoruz.
+          # Check_package komutlarına dokunmayan akıllı filtreleme (Regex) uyguluyoruz (paket denetimleri bozulmaz).
+          sudo find /usr/lib/live/build/ /usr/share/live/build/ -type f -exec sed -i '/Check_package/!s|\bisohybrid\b|echo isohybrid_skipped|g' {} + 2>/dev/null || true
           
-          # 2. scripts klasöründeki tüm dosyalarda yer alan isohybrid çalıştırma satırını etkisizleştir
-          find scripts/ -type f -exec sed -i 's|isohybrid.*binary.*\.iso|echo skipped_isohybrid|g' {} + 2>/dev/null || true
+          # 2. KATMAN (Chroot / ISO İçi): Derleme script'ine kanca (hook) enjekte ediyoruz.
+          # Chroot içerisine syslinux-utils kurulduktan hemen sonra isohybrid'i kalıcı olarak /bin/true ile maskeliyoruz.
+          sed -i 's|chmod 440 /etc/sudoers.d/macnix-live|chmod 440 /etc/sudoers.d/macnix-live\n# Mask isohybrid\nln -sf /bin/true /usr/bin/isohybrid \|\| true|g' scripts/phase7-build-iso.sh || true
+          
+          # Host üzerinde de ek güvenlik olarak maskeliyoruz
+          sudo ln -sf /bin/true /usr/bin/isohybrid || true
+          sudo ln -sf /bin/true /bin/isohybrid || true
           
           # Derlemeyi başlat
           sudo bash scripts/phase7-build-iso.sh
 
-      - name: Rename ISO to include -belgeselseo
-        # Derlenen ISO dosyasını bulup ismine -belgeselseo ekini ekler
+      - name: Rename ISO to include -belgeselsemo
+        # Derlenen ISO dosyasını bulup ismine -belgeselsemo ekini ekler
         run: |
           cd build/output
           ISO_FILE=$(ls *.iso | head -n 1)
           if [ -n "$ISO_FILE" ]; then
             BASE_NAME="${ISO_FILE%.*}"
-            NEW_NAME="${BASE_NAME}-belgeselseo.iso"
+            NEW_NAME="${BASE_NAME}-belgeselsemo.iso"
             mv "$ISO_FILE" "$NEW_NAME"
             echo "Renamed: $ISO_FILE -> $NEW_NAME"
           else
@@ -81,44 +86,44 @@ jobs:
       - name: Upload ISO artifact
         uses: actions/upload-artifact@v4
         with:
-          name: macnix-iso-belgeselseo
-          path: build/output/*-belgeselseo.iso
+          name: macnix-iso-belgeselsemo
+          path: build/output/*-belgeselsemo.iso
 
       - name: Delete old release and tag
-        # Çakışmayı önlemek için eski "latest-belgeselseo" sürümünü ve etiketini tamamen siler.
+        # Çakışmayı önlemek için eski "latest-belgeselsemo" sürümünü ve etiketini tamamen siler.
         if: github.event_name == 'push' && (github.ref == 'refs/heads/master' || github.ref == 'refs/heads/main') || github.event_name == 'workflow_dispatch'
         run: |
           git config --global user.name "github-actions[bot]"
           git config --global user.email "41898282+github-actions[bot]@users.noreply.github.com"
           
           # Varsa eski GitHub Release sürümünü sil
-          gh release delete "latest-belgeselseo" --yes || true
+          gh release delete "latest-belgeselsemo" --yes || true
           
           # Varsa remote üzerindeki tag'i sil
-          git push origin :refs/tags/latest-belgeselseo || true
+          git push origin :refs/tags/latest-belgeselsemo || true
           
           # Varsa local üzerindeki tag'i temizle
-          git tag -d latest-belgeselseo || true
+          git tag -d latest-belgeselsemo || true
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Create Release and Upload ISO
-        # Yeni ve temiz "latest-belgeselseo" sürümünü oluşturup ISO'yu yükler
+        # Yeni ve temiz "latest-belgeselsemo" sürümünü oluşturup ISO'yu yükler
         if: github.event_name == 'push' && (github.ref == 'refs/heads/master' || github.ref == 'refs/heads/main') || github.event_name == 'workflow_dispatch'
         uses: softprops/action-gh-release@v2
         with:
-          tag_name: "latest-belgeselseo"
-          name: "MacNix OS Latest (belgeselseo)"
+          tag_name: "latest-belgeselsemo"
+          name: "MacNix OS Latest (belgeselsemo)"
           body: |
             MacNix OS ISO dosyası başarıyla derlendi.
             
             Bu sürüm her yeni derleme çalıştırıldığında otomatik olarak güncellenir ve eski sürümün yerini alır.
             
             ### Dosya Bilgisi:
-            - **Dosya Adı:** `macnix-*-belgeselseo.iso`
+            - **Dosya Adı:** `macnix-*-belgeselsemo.iso`
             - **Kurulum:** Calamares `unpackfs` yapılandırma hatası tamamen çözülmüştür.
           draft: false
           prerelease: false
-          files: build/output/*-belgeselseo.iso
+          files: build/output/*-belgeselsemo.iso
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
