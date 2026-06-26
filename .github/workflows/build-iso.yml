@@ -34,14 +34,13 @@ jobs:
 
       - name: Build ISO
         run: |
-          # KESİN ÇÖZÜM: Sistemin orijinal isohybrid aracını (/usr/bin/) devre dışı bırakıyoruz.
-          # Önceki denemede /usr/local/bin/ kullandığımız için sistem o dosyayı görmedi.
-          sudo mv /usr/bin/isohybrid /usr/bin/isohybrid.real 2>/dev/null || true
+          # KESİN ÇÖZÜM: dpkg-divert ile isohybrid'ı sahte dosyayla değiştiriyoruz.
+          # Bu sayede script içinden syslinux yüklense bile sahte dosyamız korunur.
+          sudo dpkg-divert --add --rename --divert /usr/bin/isohybrid.real /usr/bin/isohybrid
           echo '#!/bin/bash' | sudo tee /usr/bin/isohybrid > /dev/null
           echo 'exit 0' | sudo tee -a /usr/bin/isohybrid > /dev/null
           sudo chmod +x /usr/bin/isohybrid
           
-          # Artık script isohybrid çağırdığında "her şey yolunda" diyecektir.
           sudo bash scripts/phase7-build-iso.sh
         env:
           DEBIAN_FRONTEND: noninteractive
