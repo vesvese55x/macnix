@@ -16,6 +16,20 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v4
 
+      - name: Free Disk Space (Ubuntu Runner)
+        # GNOME masaüstü derlemesi yüksek disk alanı gerektirdiği için
+        # kullanmadığımız araçları silerek 35GB+ alan açıyoruz.
+        run: |
+          echo "=== DISK SPACE BEFORE CLEANUP ==="
+          df -h
+          sudo rm -rf /usr/share/dotnet
+          sudo rm -rf /usr/local/lib/android
+          sudo rm -rf /opt/ghc
+          sudo rm -rf /usr/local/share/boost
+          sudo apt-get clean
+          echo "=== DISK SPACE AFTER CLEANUP ==="
+          df -h
+
       - name: Install dependencies
         env:
           DEBIAN_FRONTEND: noninteractive
@@ -47,9 +61,7 @@ jobs:
             whois \
             ovmf
 
-          # KRONIK LIVE-BUILD HATASI YAMASI:
-          # live-build'in Contents-amd64.gz dosyasını yanlış dizinde (404 hatası veren yerde) 
-          # aramasına sebep olan hatayı düzeltmek için ilgili script'i güncelliyoruz.
+          # live-build'in Contents-amd64.gz dosyasını doğru dizinde (main altında) araması için yamalıyoruz
           sudo sed -i 's|dists/${LB_PARENT_DISTRIBUTION}/Contents-${LB_ARCHITECTURES}.gz|dists/${LB_PARENT_DISTRIBUTION}/main/Contents-${LB_ARCHITECTURES}.gz|g' /usr/lib/live/build/lb_chroot_linux-image || true
           sudo sed -i 's|dists/${LB_DISTRIBUTION}/Contents-${LB_ARCHITECTURES}.gz|dists/${LB_DISTRIBUTION}/main/Contents-${LB_ARCHITECTURES}.gz|g' /usr/lib/live/build/lb_chroot_linux-image || true
 
@@ -193,13 +205,10 @@ jobs:
       - name: Build ISO
         run: |
           cd live-build-config
-          # Güvenli temizlik
           sudo rm -rf config/chroot_local-includes/
           
-          # Hataları loglayarak build ediyoruz
           sudo lb build 2>&1 | tee build.log
           
-          # ISO Dosyası Başarıyla Oluştu mu?
           if ls *.iso 1> /dev/null 2>&1; then
             echo "✅ ISO build successful!"
             mv *.iso ../macnix.iso
