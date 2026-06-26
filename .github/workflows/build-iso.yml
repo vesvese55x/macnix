@@ -50,14 +50,14 @@ jobs:
 
       - name: Build ISO
         run: |
-          # MATEMATİKSEL OLARAK KUSURSUZ ÇÖZÜM:
-          # live-build ve phase7-build-iso.sh içindeki isohybrid komutlarını etkisizleştiriyoruz.
+          # ÇİFT KATMANLI VE SIZDIRMAZ SAVUNMA PLANI:
+          # live-build'in isohybrid hatasını chroot içinden veya dışından fırlatmasını tamamen engelliyoruz.
           
-          # 1. KATMAN (Host Yaması): live-build dosyalarındaki isohybrid komut çağırma satırlarını etkisizleştiriyoruz.
+          # SAVUNMA 1 (Host Yaması): live-build dosyalarındaki isohybrid komut çağırma satırlarını etkisizleştiriyoruz.
           # Check_package komutlarını ve önüne tire (-) gelen parametreleri koruyan gelişmiş Regex yapısı.
           sudo find /usr/lib/live/build/ /usr/share/live/build/ -type f -exec sed -i '/Check_package/!{s|^isohybrid\b|echo isohybrid_skipped|g; s|\([^-]\)\bisohybrid\b|\1echo isohybrid_skipped|g}' {} + 2>/dev/null || true
           
-          # 2. KATMAN (Chroot / ISO İçi): Derleme script'indeki kancayı (hook) otomatik olarak yamalayarak
+          # SAVUNMA 2 (Chroot / ISO İçi): Derleme script'indeki kancayı (hook) otomatik olarak yamalayarak
           # chroot içine syslinux-utils kurulsa dahi isohybrid komutunu kalıcı olarak /bin/true ile maskeliyoruz.
           sed -i 's|chmod 440 /etc/sudoers.d/macnix-live|chmod 440 /etc/sudoers.d/macnix-live\nln -sf /bin/true /usr/bin/isohybrid|g' scripts/phase7-build-iso.sh || true
           
@@ -69,8 +69,10 @@ jobs:
           sudo bash scripts/phase7-build-iso.sh
 
       - name: Rename ISO to include -belgeselsemo
-        # Derlenen ISO dosyasını bulup ismine -belgeselsemo ekini ekler
+        # Derlenen ISO dosyasını bulup ismine -belgeselsemo ekini ekler.
+        # Sudo ile derlendiği için öncelikle sahipliği kendi kullanıcımıza geçiriyoruz.
         run: |
+          sudo chown -R $USER:$USER build/output/
           cd build/output
           ISO_FILE=$(ls *.iso | head -n 1)
           if [ -n "$ISO_FILE" ]; then
