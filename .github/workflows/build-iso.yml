@@ -24,44 +24,25 @@ jobs:
           grub-efi-amd64-bin grub-pc-bin mtools dosfstools isolinux \
           syslinux-common syslinux-utils
 
-      - name: Fix Calamares unpackfs configuration
-        # Calamares'in "Hatalı unpackfs yapılandırması" hatasını çözmek için
-        # unpackfs.conf dosyasını oluşturup repoda varsa tüm calamares modüllerini güncelliyoruz.
-        run: |
-          # 1. Standart live-build dizininde oluştur
-          mkdir -p config/includes.chroot/etc/calamares/modules
-          echo '---' > config/includes.chroot/etc/calamares/modules/unpackfs.conf
-          echo 'unpack:' >> config/includes.chroot/etc/calamares/modules/unpackfs.conf
-          echo '    - source: "/run/live/medium/live/filesystem.squashfs"' >> config/includes.chroot/etc/calamares/modules/unpackfs.conf
-          echo '      sourcefs: "squashfs"' >> config/includes.chroot/etc/calamares/modules/unpackfs.conf
-          echo '      destination: ""' >> config/includes.chroot/etc/calamares/modules/unpackfs.conf
-          echo '      imageType: "squashfs"' >> config/includes.chroot/etc/calamares/modules/unpackfs.conf
-          
-          # 2. Repo içinde yer alan tüm calamares modüllerini bul ve yamala
-          find . -type d -name "modules" | grep "calamares" | while read -r dir; do
-            echo "Patching unpackfs.conf in $dir..."
-            echo '---' > "$dir/unpackfs.conf"
-            echo 'unpack:' >> "$dir/unpackfs.conf"
-            echo '    - source: "/run/live/medium/live/filesystem.squashfs"' >> "$dir/unpackfs.conf"
-            echo '      sourcefs: "squashfs"' >> "$dir/unpackfs.conf"
-            echo '      destination: ""' >> "$dir/unpackfs.conf"
-            echo '      imageType: "squashfs"' >> "$dir/unpackfs.conf"
-          done
-
       - name: Build ISO
         run: |
-          # ÇİFT KATMANLI VE SIZDIRMAZ SAVUNMA PLANI:
-          # live-build'in isohybrid hatasını chroot içinden veya dışından fırlatmasını tamamen engelliyoruz.
+          # 1. Calamares "unpackfs" hatasını önleyen yamayı doğrudan phase7-build-iso.sh script'ine entegre ediyoruz.
+          # Böylece lb clean aşamasında bu yama asla silinmez.
+          sed -i 's|# Calamares settings|# Calamares settings\nmkdir -p "${CHROOT_BASE}/etc/calamares/modules"\necho -e "---\\nunpack:\\n    - source: \\"/run/live/medium/live/filesystem.squashfs\\"\\n      sourcefs: \\"squashfs\\"\\n      destination: \\"\\"\\n      imageType: \\"squashfs\\"" > "${CHROOT_BASE}/etc/calamares/modules/unpackfs.conf"|g' scripts/phase7-build-iso.sh || true
           
-          # SAVUNMA 1 (Host Yaması): live-build dosyalarındaki isohybrid komut çağırma satırlarını etkisizleştiriyoruz.
-          # Check_package komutlarını ve önüne tire (-) gelen parametreleri koruyan gelişmiş Regex yapısı.
+          # 2. CHROOT İÇİ SAVUNMA: syslinux-utils kurulduktan sonra isohybrid'i chroot içinde kalıcı olarak maskele.
+          sed -i 's|chmod 440 /etc/sudoers.d/macnix-live|chmod 440 /etc/sudoers.d/macnix-live\nln -sf /bin/true /usr/bin/isohybrid|g' scripts/phase7-build-iso.sh || true
+
+          # 3. KUSURSUZ GÖPRÜ VE KLASÖR EŞLEME YAMASI (Ventoy & Plymouth & Sürücü Çözümü):
+          # live-build v3 ve v4+ sürümleri arasındaki dizin uyumsuzluklarını köprü kurarak çözüyoruz.
+          # lb build çalışmadan hemen önce tüm yeni nesil klasörlerin içeriğini v3 klasörlerine kopyalıyoruz.
+          # Bu sayede kernel yeniden adlandırma kancası (vmlinuz), Plymouth teması ve grub.cfg başarıyla ISO'ya işlenir.
+          sed -i 's|lb build|mkdir -p config/chroot_local-hooks config/binary_local-hooks config/chroot_local-includes config/binary_local-includes config/chroot_local-packageslists \&\& cp -r config/hooks/live/* config/chroot_local-hooks/ 2>/dev/null \|\| true \&\& cp -r config/hooks/normal/* config/binary_local-hooks/ 2>/dev/null \|\| true \&\& cp -r config/includes.chroot/* config/chroot_local-includes/ 2>/dev/null \|\| true \&\& cp -r config/includes.binary/* config/binary_local-includes/ 2>/dev/null \|\| true \&\& cp -r config/package-lists/* config/chroot_local-packageslists/ 2>/dev/null \|\| true \&\& chmod +x config/chroot_local-hooks/* config/binary_local-hooks/* 2>/dev/null \|\| true \&\& lb build|g' scripts/phase7-build-iso.sh || true
+
+          # 4. Host (GitHub Runner) düzeyindeki isohybrid çalıştırma satırlarını etkisizleştiriyoruz.
           sudo find /usr/lib/live/build/ /usr/share/live/build/ -type f -exec sed -i '/Check_package/!{s|^isohybrid\b|echo isohybrid_skipped|g; s|\([^-]\)\bisohybrid\b|\1echo isohybrid_skipped|g}' {} + 2>/dev/null || true
           
-          # SAVUNMA 2 (Chroot / ISO İçi): Derleme script'indeki kancayı (hook) otomatik olarak yamalayarak
-          # chroot içine syslinux-utils kurulsa dahi isohybrid komutunu kalıcı olarak /bin/true ile maskeliyoruz.
-          sed -i 's|chmod 440 /etc/sudoers.d/macnix-live|chmod 440 /etc/sudoers.d/macnix-live\nln -sf /bin/true /usr/bin/isohybrid|g' scripts/phase7-build-iso.sh || true
-          
-          # Host üzerinde de ek güvenlik olarak maskeliyoruz
+          # 5. Host üzerinde de ek güvenlik olarak isohybrid maskeliyoruz
           sudo ln -sf /bin/true /usr/bin/isohybrid || true
           sudo ln -sf /bin/true /bin/isohybrid || true
           
@@ -70,7 +51,7 @@ jobs:
 
       - name: Rename ISO to include -belgeselsemo
         # Derlenen ISO dosyasını bulup ismine -belgeselsemo ekini ekler.
-        # Sudo ile derlendiği için öncelikle sahipliği kendi kullanıcımıza geçiriyoruz.
+        # Sahipliği kendi kullanıcımıza geçirerek yetki hatasını önlüyoruz.
         run: |
           sudo chown -R $USER:$USER build/output/
           cd build/output
@@ -118,6 +99,8 @@ jobs:
           name: "MacNix OS Latest (belgeselsemo)"
           body: |
             MacNix OS ISO dosyası başarıyla derlendi.
+            
+            Bu repo orijinalinde "https://github.com/local-over/macnix"e aittir.. Sadece release iso buildleri oluşturulmuştur.. Repo sahibi "hassan elkady - LocalOver" e saygılarımızla..
             
             Bu sürüm her yeni derleme çalıştırıldığında otomatik olarak güncellenir ve eski sürümün yerini alır.
             
