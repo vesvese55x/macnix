@@ -8,7 +8,7 @@ on:
   workflow_dispatch:
 
 permissions:
-  contents: write  # GitHub Releases sekmesine ISO yükleyebilmek için gerekli izin
+  contents: write  # GitHub Releases ve Git Tag işlemlerini yapabilmek için gerekli yazma izni
 
 jobs:
   build:
@@ -20,90 +20,95 @@ jobs:
       - name: Install dependencies
         run: |
           sudo apt-get update
-          # Temel bağımlılıkları kuruyoruz
-          sudo apt-get install -y debootstrap xorriso squashfs-tools \
-            grub-efi-amd64-bin grub-pc-bin mtools dosfstools isolinux \
-            syslinux-common syslinux-utils || true
-          
-          # GitHub Runner'ın sürümüne göre (Örn: Ubuntu 24.04) live-build depoda bulunamazsa
-          # Debian'ın kararlı resmi paketini indirip kurarak hata almasını engelliyoruz.
-          sudo apt-get install -y live-build || {
-            echo "live-build paketi depoda bulunamadı, manuel kuruluyor..."
-            wget -q http://ftp.debian.org/debian/pool/main/l/live-build/live-build_20230502_all.deb
-            sudo dpkg -i live-build_20230502_all.deb || sudo apt-get install -f -y
-          }
+          sudo apt-get install -y live-build debootstrap xorriso squashfs-tools \
+          grub-efi-amd64-bin grub-pc-bin mtools dosfstools isolinux \
+          syslinux-common syslinux-utils
 
       - name: Fix Calamares unpackfs configuration
-        # Görselde aldığın "Hatalı unpackfs yapılandırması" hatasını çözmek için
-        # repodaki calamares modüllerini otomatik tespit edip unpackfs.conf dosyasını düzeltiyoruz.
+        # Calamares'in "Hatalı unpackfs yapılandırması" hatasını çözmek için
+        # unpackfs.conf dosyasını oluşturup repoda varsa tüm calamares modüllerini güncelliyoruz.
+        # EOF yerine echo kullanarak girintileme hatalarını tamamen engelledik.
         run: |
           # 1. Standart live-build dizininde oluştur
           mkdir -p config/includes.chroot/etc/calamares/modules
-          cat > config/includes.chroot/etc/calamares/modules/unpackfs.conf << 'EOF'
-# SPDX-FileCopyrightText: no
-# SPDX-License-Identifier: CC0-1.0
----
-unpack:
-    - source: "/run/live/medium/live/filesystem.squashfs"
-      sourcefs: "squashfs"
-      destination: ""
-      imageType: "squashfs"
-EOF
+          echo '---' > config/includes.chroot/etc/calamares/modules/unpackfs.conf
+          echo 'unpack:' >> config/includes.chroot/etc/calamares/modules/unpackfs.conf
+          echo '    - source: "/run/live/medium/live/filesystem.squashfs"' >> config/includes.chroot/etc/calamares/modules/unpackfs.conf
+          echo '      sourcefs: "squashfs"' >> config/includes.chroot/etc/calamares/modules/unpackfs.conf
+          echo '      destination: ""' >> config/includes.chroot/etc/calamares/modules/unpackfs.conf
+          echo '      imageType: "squashfs"' >> config/includes.chroot/etc/calamares/modules/unpackfs.conf
           
-          # 2. Repo içinde yer alan tüm calamares modüllerini tara ve tamamını yamala
+          # 2. Repo içinde yer alan tüm calamares modüllerini bul ve yamala
           find . -type d -name "modules" | grep "calamares" | while read -r dir; do
-            echo "Düzeltiliyor: $dir/unpackfs.conf"
-            cat > "$dir/unpackfs.conf" << 'EOF'
-# SPDX-FileCopyrightText: no
-# SPDX-License-Identifier: CC0-1.0
----
-unpack:
-    - source: "/run/live/medium/live/filesystem.squashfs"
-      sourcefs: "squashfs"
-      destination: ""
-      imageType: "squashfs"
-EOF
+            echo "Patching unpackfs.conf in $dir..."
+            echo '---' > "$dir/unpackfs.conf"
+            echo 'unpack:' >> "$dir/unpackfs.conf"
+            echo '    - source: "/run/live/medium/live/filesystem.squashfs"' >> "$dir/unpackfs.conf"
+            echo '      sourcefs: "squashfs"' >> "$dir/unpackfs.conf"
+            echo '      destination: ""' >> "$dir/unpackfs.conf"
+            echo '      imageType: "squashfs"' >> "$dir/unpackfs.conf"
           done
 
       - name: Build ISO
         run: sudo bash scripts/phase7-build-iso.sh
 
-      - name: Rename ISO to include -belgeselsemo
-        # Çıkan ISO dosyasını bulup ismine otomatik olarak -belgeselsemo ekini ekler
+      - name: Rename ISO to include -belgeselseo
+        # Derlenen ISO dosyasını bulup ismine -belgeselseo ekini ekler
         run: |
           cd build/output
           ISO_FILE=$(ls *.iso | head -n 1)
           if [ -n "$ISO_FILE" ]; then
             BASE_NAME="${ISO_FILE%.*}"
-            NEW_NAME="${BASE_NAME}-belgeselsemo.iso"
+            NEW_NAME="${BASE_NAME}-belgeselseo.iso"
             mv "$ISO_FILE" "$NEW_NAME"
-            echo "Yeniden adlandırıldı: $ISO_FILE -> $NEW_NAME"
+            echo "Renamed: $ISO_FILE -> $NEW_NAME"
           else
-            echo "ISO dosyası bulunamadı!"
+            echo "No ISO file found!"
             exit 1
           fi
 
       - name: Upload ISO artifact
         uses: actions/upload-artifact@v4
         with:
-          name: macnix-iso-belgeselsemo
-          path: build/output/*-belgeselsemo.iso
+          name: macnix-iso-belgeselseo
+          path: build/output/*-belgeselseo.iso
+
+      - name: Delete old release and tag
+        # Sadece push veya manuel tetiklemede çalışarak çakışmayı önlemek için 
+        # eski "latest-belgeselseo" sürümünü ve etiketini (Tag) GitHub'dan tamamen temizler.
+        if: github.event_name == 'push' && (github.ref == 'refs/heads/master' || github.ref == 'refs/heads/main') || github.event_name == 'workflow_dispatch'
+        run: |
+          git config --global user.name "github-actions[bot]"
+          git config --global user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          
+          # Varsa eski GitHub Release sürümünü sil
+          gh release delete "latest-belgeselseo" --yes || true
+          
+          # Varsa remote (uzak sunucu) üzerindeki tag'i sil
+          git push origin :refs/tags/latest-belgeselseo || true
+          
+          # Varsa local üzerindeki tag'i temizle
+          git tag -d latest-belgeselseo || true
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Create Release and Upload ISO
-        # Pull Request dışındaki durumlarda ISO'yu otomatik olarak GitHub Releases sekmesine yükler
+        # Yeni ve temiz "latest-belgeselseo" sürümünü oluşturup ISO'yu yükler
         if: github.event_name == 'push' && (github.ref == 'refs/heads/master' || github.ref == 'refs/heads/main') || github.event_name == 'workflow_dispatch'
         uses: softprops/action-gh-release@v2
         with:
-          tag_name: "v${{ github.run_number }}-belgeselsemo"
-          name: "MacNix OS v${{ github.run_number }} (belgeselsemo)"
+          tag_name: "latest-belgeselseo"
+          name: "MacNix OS Latest (belgeselseo)"
           body: |
             MacNix OS ISO dosyası başarıyla derlendi.
             
-            ### Özellikler:
-            - **ISO Dosyası:** `macnix-*-belgeselsemo.iso`
-            - **Kurulum Hatası Giderildi:** Calamares `unpackfs` modülünün yaşadığı boş yapılandırma hatası çözüldü.
+            Bu sürüm her yeni derleme çalıştırıldığında otomatik olarak güncellenir ve eski sürümün yerini alır.
+            
+            ### Dosya Bilgisi:
+            - **Dosya Adı:** `macnix-*-belgeselseo.iso`
+            - **Kurulum:** Calamares `unpackfs` modülünün yaşadığı boş yapılandırma hatası tamamen çözülmüştür.
           draft: false
           prerelease: false
-          files: build/output/*-belgeselsemo.iso
+          files: build/output/*-belgeselseo.iso
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
