@@ -342,9 +342,20 @@ stage_overlay() {
 
   cp -a "${ROOT}/overlay/." "$ROOTFS/"
 
-  chroot_run "id -u macnix >/dev/null 2>&1 || \
-      useradd -m -s /bin/bash -c 'MacNix' -G sudo,audio,video,plugdev,netdev,cdrom,disk,input,kvm macnix
-    echo 'macnix:macnix' | chpasswd
+  # ── Canlı ortam hesabı: "macnix-live" OLMALI, "macnix" DEĞİL ─────────────
+  # Neden: Calamares'in `users` job'u hedefe "macnix" hesabını oluşturmaya
+  # çalışıyor (install-plan.json -> users). Eğer canlı ortamda da "macnix"
+  # adlı bir hesap varsa, unpackfs kök dosya sistemini hedefe kopyaladığında
+  # /etc/passwd de birlikte geliyor ve kurulum şu hatayla DÜŞÜYOR:
+  #     useradd: user 'macnix' already exists
+  #     Command <i>useradd -m -U -s /bin/bash -c … macnix</i> exit code 9
+  # (canlı testte birebir yakalandı, 2026-11-14 — kurulum %50'de öldü)
+  # Çözüm: canlı hesabın adı macnix-live. Ayrıca settings.conf'ta unpackfs'ten
+  # hemen sonra `removeuser` job'u çalışıp bu hesabı hedeften siliyor;
+  # böylece hem çakışma olmuyor hem de kurulu sistemde artık hesap kalmıyor.
+  chroot_run "id -u macnix-live >/dev/null 2>&1 || \
+      useradd -m -s /bin/bash -c 'MacNix Live' -G sudo,audio,video,plugdev,netdev,cdrom,disk,input,kvm macnix-live
+    echo 'macnix-live:macnix' | chpasswd
     echo 'root:root' | chpasswd" || warn "kullanıcı oluşturma uyarı"
 
   # ── sudoers: DOSYA ADI SIRASI KRİTİK ────────────────────────────────────
@@ -359,7 +370,7 @@ stage_overlay() {
   #   • 99-macnix-live → canlı ortamda tam NOPASSWD (010-live'dan taşındı)
   install -d -m 0750 "$ROOTFS/etc/sudoers.d"
   install -m 0440 "${ROOT}/overlay/etc/sudoers.d/99-macnix" "$ROOTFS/etc/sudoers.d/99-macnix"
-  printf 'macnix ALL=(ALL) NOPASSWD: ALL\n' > "$ROOTFS/etc/sudoers.d/99-macnix-live"
+  printf 'macnix ALL=(ALL) NOPASSWD: ALL\nmacnix-live ALL=(ALL) NOPASSWD: ALL\n' > "$ROOTFS/etc/sudoers.d/99-macnix-live"
   chmod 0440 "$ROOTFS/etc/sudoers.d/99-macnix-live"
   # Eski adlar kalırsa (yükseltme/önbellek) sudo karışabilir: temizle
   rm -f "$ROOTFS/etc/sudoers.d/020-macnix" "$ROOTFS/etc/sudoers.d/010-live"
