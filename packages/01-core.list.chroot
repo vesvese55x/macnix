@@ -1,0 +1,166 @@
+# MacNix 2.0 — temel sistem (canlı ortam)
+# Not: her satır bir paket; yorumlar # ile başlar.
+# grub-efi-amd64 ayrı geçişte kurulur (postinst'i canlı ortamda sorun çıkarır).
+
+# --- init / canlı önyükleme -------------------------------------------------
+live-boot
+live-config
+live-config-systemd
+systemd
+systemd-sysv
+dbus
+dbus-x11
+console-setup
+keyboard-configuration
+locales
+tzdata
+sudo
+udev
+
+# --- çekirdek & donanım -----------------------------------------------------
+linux-image-amd64
+firmware-linux-free
+firmware-misc-nonfree
+firmware-amd-graphics
+firmware-iwlwifi
+pciutils
+usbutils
+lshw
+kmod
+cpufrequtils
+numactl
+lm-sensors
+
+# --- depolama / dosya sistemi araçları --------------------------------------
+e2fsprogs
+xfsprogs
+dosfstools
+exfatprogs
+ntfs-3g
+parted
+gdisk
+fdisk
+squashfs-tools
+xorriso
+mtools
+rsync
+zerofree
+cryptsetup
+lvm2
+util-linux
+mdadm
+zstd
+xz-utils
+p7zip-full
+dmg2img
+genisoimage
+
+# --- grafik / masaüstü ------------------------------------------------------
+xorg
+xserver-xorg-core
+xserver-xorg-input-libinput
+xserver-xorg-input-all
+xserver-xorg-video-all
+xserver-xorg-video-qxl
+xserver-xorg-video-vmware
+xserver-xorg-video-fbdev
+xserver-xorg-video-vesa
+xserver-xorg-video-amdgpu
+xserver-xorg-video-ati
+xserver-xorg-video-intel
+xserver-xorg-video-nouveau
+xinit
+openbox
+lightdm
+lightdm-gtk-greeter
+plymouth
+plymouth-themes
+zenity
+yad
+xterm
+x11-xserver-utils
+x11-utils
+x11-xkb-utils
+fonts-dejavu-core
+fonts-inter
+dbus-user-session
+
+# --- ağ ---------------------------------------------------------------------
+network-manager
+wpasupplicant
+wireless-regdb
+rfkill
+iproute2
+iputils-ping
+net-tools
+curl
+wget
+ca-certificates
+openssh-client
+
+# --- sanallaştırma ----------------------------------------------------------
+qemu-system-x86
+qemu-system-gui
+qemu-utils
+ovmf
+seabios
+bridge-utils
+iptables
+nftables
+dnsmasq-base
+socat
+virt-viewer
+spice-vdagent
+mesa-utils
+libgl1-mesa-dri
+libglx-mesa0
+
+# --- kurulum aracı ----------------------------------------------------------
+calamares
+# Calamares'in QML ekranları (notesqml / summaryq / welcomeq) için ZORUNLU.
+# Bunlar olmadan: 'module "QtQuick.Controls" is not installed'
+#   → notesqml yüklenemez → "Calamares Initialization Failed".
+# NOT: qml-module-qtquick-controls2-material DEBIAN'DA YOKTUR; QML
+# dosyalarımız Material stiline başvurmaz (yalnızca Basic stil).
+qml-module-qtquick2
+qml-module-qtquick-controls2
+qml-module-qtquick-layouts
+qml-module-qtquick-window2
+qml-module-qtqml
+qml-module-qtqml-models2
+qtdeclarative5-dev-tools
+
+# --- betik / araç zinciri ---------------------------------------------------
+python3
+python3-requests
+python3-yaml
+python3-jsonschema
+python3-pyqt5
+python3-gi
+gir1.2-gtk-3.0
+jq
+bash-completion
+gawk
+sed
+grep
+findutils
+procps
+psmisc
+less
+nano
+htop
+file
+tree
+bc
+tar
+gzip
+unzip
+unrar-free
+whois
+dmidecode
+
+# --- güvenlik / parmak izi --------------------------------------------------
+fprintd
+libpam-fprintd
+polkitd
+pkexec
