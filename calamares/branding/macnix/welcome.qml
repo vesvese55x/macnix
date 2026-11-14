@@ -110,7 +110,7 @@ Item {
          * Roller (RequirementsModel::roleNames): name, details, negatedText,
          * satisfied, mandatory, hasDetails. */
         Repeater {
-            model: config ? config.requirementsModel : 0
+            model: (typeof config !== 'undefined' && config) ? config.requirementsModel : 0
             delegate: Row {
                 width: rightCol.width
                 spacing: 8
@@ -166,10 +166,9 @@ Item {
             horizontalAlignment: Text.AlignHCenter
             color: "#7C7C86"
             elide: Text.ElideRight
-            font { family: "Inter"; pixelSize: 11 }
-            text: "BELGESELSEMO tarafından ARENA.AI sayesinde geliştirildi  ·  " +
-                  "github.com/local-over/macnix orijinal reposundan fork edilerek  ·  " +
-                  "belgeselsemo.com.tr"
+            font { family: "Inter"; pixelSize: 10 }
+            text: "BELGESELSEMO tarafından ARENA.AI sayesinde geliştirildi · " +
+                  "fork: github.com/local-over/macnix · belgeselsemo.com.tr"
         }
     }
 }
