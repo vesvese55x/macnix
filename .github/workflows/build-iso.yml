@@ -36,6 +36,9 @@ jobs:
       - name: mount yaması regresyon testi
         run: python3 tools/test-mount-patch.py
 
+      - name: sudoers sıra regresyon testi
+        run: python3 tools/test-sudoers-order.py
+
   # ── 2. ISO derleme ──────────────────────────────────────────────────────
   build:
     name: ISO derle
