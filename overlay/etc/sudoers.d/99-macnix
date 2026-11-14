@@ -1,0 +1,27 @@
+# MacNix — macnix kullanıcısı kurulum/yönetim araçlarını şifresiz çalıştırabilir.
+#
+# ⚠ DOSYA ADI ÖNEMLİ: "99-" öneki ZORUNLU.
+# sudo, /etc/sudoers.d içindeki dosyaları ALFABETİK sırayla okur ve aynı
+# komut için SON eşleşen kural kazanır. Calamares kurulum sırasında
+# /etc/sudoers.d/10-installer dosyasını "%sudo ALL=(ALL:ALL) ALL" içeriğiyle
+# yazıyor. Bu dosya 99-macnix'ten ÖNCE okunduğu için aşağıdaki NOPASSWD
+# kuralları onun üzerine yazıyor (yani son söz bizim).
+#
+# Dosya eskiden "020-macnix" adındaydı: "020" < "10" olduğu için
+# 10-installer SONRA okunuyor ve NOPASSWD'yi eziyordu. Canlı testte
+# (2026-11-14, macnix-setup GUI) bütün adımlar
+#     "sudo: a password is required"
+# hatasıyla düşüyordu. İsim 99- yapılınca sudo -n ŞİFRESİZ çalıştı
+# (diskin üzerinde deneyle doğrulandı).
+#
+# Yalnızca bu araçlarla sınırlıdır; genel NOPASSWD verilmez.
+macnix ALL=(root) NOPASSWD: /usr/local/bin/macnix-vm
+macnix ALL=(root) NOPASSWD: /usr/local/bin/macnix-install-macos
+macnix ALL=(root) NOPASSWD: /usr/local/bin/macnix-oc
+macnix ALL=(root) NOPASSWD: /usr/local/bin/macnix-assets
+macnix ALL=(root) NOPASSWD: /usr/local/bin/macnix-gpu-mode
+macnix ALL=(root) NOPASSWD: /usr/local/bin/macnix-doctor
+macnix ALL=(root) NOPASSWD: /usr/local/bin/macnix-setup
+macnix ALL=(root) NOPASSWD: /usr/local/bin/macnix-fetch-macos
+macnix ALL=(root) NOPASSWD: /usr/bin/calamares
+macnix ALL=(root) NOPASSWD: /bin/systemctl restart macnix-vm.service
