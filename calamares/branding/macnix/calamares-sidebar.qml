@@ -1,3 +1,14 @@
+/* ============================================================================
+ *  MacNix 2.0 — Calamares yan menü (QML)
+ * ============================================================================
+ *  Canlı testte görülen hata: logo ve "macOS Virtualization Platform" yazısı,
+ *  hemen altındaki "MacNix" başlığıyla ÜST ÜSTE biniyordu (g1/z1 ekran
+ *  görüntüleri). Sebep: Image/Text öğeleri Column içinde ama anchor
+ *  kullanmadan çiziliyordu; Column yüksekliklerini doğru hesaplamıyordu.
+ *
+ *  Çözüm: tüm öğeler Column'a `width` verilerek yerleştirildi, sabit
+ *  yükseklikler kaldırıldı, adım listesi Flickable içine alındı.
+ * ========================================================================== */
 import QtQuick 2.15
 import QtQuick.Controls 2.15
 import io.calamares.ui 1.0
@@ -6,66 +17,89 @@ import io.calamares.core 1.0
 Rectangle {
     id: sidebarRoot
     color: "#0B0C10"
-    width: 220
+    width: 236
 
+    // ── Üst blok: marka ───────────────────────────────────────────────────
     Column {
-        anchors.fill: parent
-        anchors.margins: 20
-        spacing: 16
+        id: brand
+        width: parent.width - 32
+        anchors.top: parent.top
+        anchors.topMargin: 22
+        anchors.horizontalCenter: parent.horizontalCenter
+        spacing: 8
 
-        // MacNix Logo
         Image {
             source: "macnix_logo.png"
-            width: 80; height: 80
-            anchors.horizontalCenter: parent.horizontalCenter
+            width: 72; height: 72
             fillMode: Image.PreserveAspectFit
+            smooth: true
+            anchors.horizontalCenter: parent.horizontalCenter
         }
 
         Text {
-            text: "MacNix"
+            text: "MacNix 2.0"
             color: "#FFFFFF"
-            font { family: "Inter"; pixelSize: 22; weight: Font.Bold }
+            font { family: "Inter"; pixelSize: 21; weight: Font.Bold }
             anchors.horizontalCenter: parent.horizontalCenter
         }
 
         Text {
-            text: "macOS Virtualization Platform"
-            color: "#8E8E93"
-            font { family: "Inter"; pixelSize: 12 }
+            text: "Gelişmiş macOS\nSanallaştırma Distrosu"
+            color: "#4FD8EE"
+            horizontalAlignment: Text.AlignHCenter
+            lineHeight: 1.2
+            font { family: "Inter"; pixelSize: 11; weight: Font.DemiBold }
             anchors.horizontalCenter: parent.horizontalCenter
         }
 
-        Item { height: 20; width: 1 } // Spacer
+        Rectangle {
+            width: parent.width
+            height: 1
+            color: "#20222B"
+            anchors.horizontalCenter: parent.horizontalCenter
+        }
+    }
 
-        // Step indicators
-        Repeater {
+    // ── Orta blok: adım göstergeleri ──────────────────────────────────────
+    Item {
+        id: stepsArea
+        anchors.top: brand.bottom
+        anchors.topMargin: 14
+        anchors.bottom: credit.top
+        anchors.bottomMargin: 10
+        anchors.left: parent.left
+        anchors.right: parent.right
+
+        ListView {
+            id: stepList
+            anchors.fill: parent
+            anchors.leftMargin: 14
+            anchors.rightMargin: 10
+            clip: true
             model: ViewManager
+            boundsBehavior: Flickable.StopAtBounds
+            ScrollBar.vertical: ScrollBar { policy: ScrollBar.AsNeeded }
+
             delegate: Item {
-                width: parent.width
-                height: 44
+                width: stepList.width
+                height: 38
 
                 Row {
                     anchors.verticalCenter: parent.verticalCenter
-                    spacing: 12
-                    x: 16
+                    x: 6
+                    spacing: 10
 
-                    // Dot indicator
                     Rectangle {
-                        width: 10; height: 10
-                        radius: 5
+                        width: 8; height: 8; radius: 4
                         anchors.verticalCenter: parent.verticalCenter
                         color: {
-                            if (index < ViewManager.currentStepIndex) return "#30D158"  // Done
-                            if (index === ViewManager.currentStepIndex) return "#0A84FF" // Current
-                            return "#3A3A3C"  // Upcoming
+                            if (index < ViewManager.currentStepIndex) return "#30D158"   // bitti
+                            if (index === ViewManager.currentStepIndex) return "#0A84FF" // şimdi
+                            return "#3A3A3C"                                             // sırada
                         }
-
-                        Behavior on color {
-                            ColorAnimation { duration: 300; easing.type: Easing.InOutQuad }
-                        }
+                        Behavior on color { ColorAnimation { duration: 250 } }
                     }
 
-                    // Step label
                     Text {
                         text: display
                         color: {
@@ -75,42 +109,55 @@ Rectangle {
                         }
                         font {
                             family: "Inter"
-                            pixelSize: 14
-                            weight: index === ViewManager.currentStepIndex ? Font.SemiBold : Font.Normal
+                            pixelSize: 12
+                            weight: index === ViewManager.currentStepIndex ? Font.DemiBold : Font.Normal
                         }
                         anchors.verticalCenter: parent.verticalCenter
-
-                        Behavior on color {
-                            ColorAnimation { duration: 300 }
-                        }
+                        Behavior on color { ColorAnimation { duration: 250 } }
                     }
                 }
             }
         }
-
-        // Bottom spacer pushes info to bottom
-        Item { anchors.fill: parent; height: 1 }
     }
 
-    // Bottom info
+    // ── Alt blok: kredi ───────────────────────────────────────────────────
     Column {
+        id: credit
+        width: parent.width - 24
         anchors.bottom: parent.bottom
-        anchors.left: parent.left
-        anchors.right: parent.right
-        anchors.margins: 20
-        spacing: 4
+        anchors.bottomMargin: 14
+        anchors.horizontalCenter: parent.horizontalCenter
+        spacing: 3
+
+        Rectangle {
+            width: parent.width
+            height: 1
+            color: "#20222B"
+        }
 
         Text {
-            text: "Created by Hassan Elkady"
-            color: "#636366"
-            font { family: "Inter"; pixelSize: 11 }
-            anchors.horizontalCenter: parent.horizontalCenter
+            width: parent.width
+            text: "BELGESELSEMO tarafından\nARENA.AI sayesinde geliştirildi"
+            color: "#7C7C86"
+            horizontalAlignment: Text.AlignHCenter
+            font { family: "Inter"; pixelSize: 9 }
+            lineHeight: 1.25
         }
         Text {
+            width: parent.width
             text: "github.com/local-over/macnix"
             color: "#636366"
-            font { family: "Inter"; pixelSize: 11 }
-            anchors.horizontalCenter: parent.horizontalCenter
+            horizontalAlignment: Text.AlignHCenter
+            font { family: "Inter"; pixelSize: 9 }
+            elide: Text.ElideRight
+        }
+        Text {
+            width: parent.width
+            text: "orijinal repo'dan fork · belgeselsemo.com.tr"
+            color: "#636366"
+            horizontalAlignment: Text.AlignHCenter
+            font { family: "Inter"; pixelSize: 9 }
+            elide: Text.ElideRight
         }
     }
 }
