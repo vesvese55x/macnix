@@ -1,0 +1,11 @@
+# derleme çıktıları
+out/
+build/
+*.iso
+*.iso.sha256
+usb-*/
+# python
+__pycache__/
+*.pyc
+# geçici
+*.log
