@@ -469,6 +469,12 @@ def test_debian_compat():
 
     # GRUB modül listesi sabit olmamalı: GRUB 2.12 efi_uga.mod'u kaldırdı ve
     # GitHub runner'da derleme "cannot open efi_uga.mod" ile patladı.
+    # build.sh yerel Calamares modüllerinin HEPSİNİ kopyalamalı; sabit liste
+    # yüzünden yeni modül ISO'ya hiç girmiyordu.
+    check("build.sh tüm yerel Calamares modüllerini kopyalıyor (sabit liste yok)",
+          'for m in $(cd "${ROOT}/calamares/modules"' in build,
+          "sabit modül listesi bulundu")
+
     check("build.sh GRUB EFI modüllerini sistemde var olanlardan süzüyor",
           '[[ -f "$moddir/$m.mod" ]]' in build and 'missing+=' in build)
 
