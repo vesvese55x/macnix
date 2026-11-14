@@ -1,0 +1,146 @@
+#!/usr/bin/env bash
+# ============================================================================
+#  MacNix 2.0 — macnix-assets
+# ============================================================================
+#  macOS önyüklemesi için gereken upstream dosyaları indirir:
+#    • OpenCorePkg (RELEASE)  → OpenCore.efi, BOOTx64.efi, sürücüler
+#    • Lilu, VirtualSMC, WhateverGreen, AppleALC kextleri
+#    • AMD_Vanilla yamaları (AMD CPU'lar için zorunlu)
+#
+#  Kullanım:
+#     macnix-assets [--dest /var/lib/macnix/assets] [--offline-dir DIR]
+#
+#  Çevrimdışı kurulum için: ISO'ya gömülü /opt/macnix/assets kullanılır.
+# ============================================================================
+set -Eeuo pipefail
+
+DEST="/var/lib/macnix/assets"
+OC_VERSION="${OC_VERSION:-1.0.8}"
+LILU_VER="${LILU_VER:-1.7.2}"
+VSMC_VER="${VSMC_VER:-1.3.8}"
+WEG_VER="${WEG_VER:-1.7.1}"
+ALC_VER="${ALC_VER:-1.9.8}"
+
+C_OK=$'\033[0;32m'; C_WA=$'\033[1;33m'; C_ER=$'\033[0;31m'; C_B=$'\033[1m'; C_R=$'\033[0m'
+say()  { printf '%s[macnix]%s %s\n' "$C_B" "$C_R" "$*"; }
+ok()   { printf '%s  [ ok ]%s %s\n' "$C_OK" "$C_R" "$*"; }
+warn() { printf '%s [warn]%s %s\n' "$C_WA" "$C_R" "$*"; }
+die()  { printf '%s [fail]%s %s\n' "$C_ER" "$C_R" "$*" >&2; exit 1; }
+
+while [[ $# -gt 0 ]]; do
+  case "$1" in
+    --dest) DEST="$2"; shift 2 ;;
+    --offline-dir) OFFLINE="$2"; shift 2 ;;
+    -h|--help) sed -n '2,20p' "$0"; exit 0 ;;
+    *) die "bilinmeyen argüman: $1" ;;
+  esac
+done
+
+# ISO'ya gömülü varlıklar varsa doğrudan kullan
+if [[ -n "${OFFLINE:-}" && -d "$OFFLINE" ]]; then
+  say "Çevrimdışı varlıklar kullanılıyor: $OFFLINE"
+  mkdir -p "$DEST"
+  cp -a "$OFFLINE/." "$DEST/"
+  ok "varlıklar kopyalandı"
+  exit 0
+fi
+if [[ -z "${FORCE_DOWNLOAD:-}" && -x /opt/macnix/assets/.complete ]]; then
+  say "ISO içindeki gömülü varlıklar kullanılıyor"
+  mkdir -p "$DEST"; cp -a /opt/macnix/assets/. "$DEST/" 2>/dev/null || true
+  exit 0
+fi
+
+mkdir -p "$DEST"/{opencore,kexts,patch}
+TMP="$(mktemp -d)"
+trap 'rm -rf "$TMP"' EXIT
+
+fetch() {
+  local url="$1" out="$2"
+  if command -v curl >/dev/null; then
+    curl -fsSL --retry 3 --connect-timeout 15 -o "$out" "$url" || return 1
+  else
+    wget -q -O "$out" "$url" || return 1
+  fi
+}
+
+say "OpenCorePkg ${OC_VERSION} indiriliyor"
+if fetch "https://github.com/acidanthera/OpenCorePkg/releases/download/${OC_VERSION}/OpenCore-${OC_VERSION}-RELEASE.zip" "$TMP/oc.zip"; then
+  unzip -q -o "$TMP/oc.zip" -d "$TMP/oc"
+  rm -rf "$DEST/opencore"; mkdir -p "$DEST/opencore"
+  cp -a "$TMP/oc/X64/EFI/." "$DEST/opencore/" 2>/dev/null || \
+    cp -a "$TMP/oc/EFI/." "$DEST/opencore/" 2>/dev/null || warn "EFI dizini bulunamadı"
+  ok "OpenCore hazır"
+else
+  warn "OpenCore indirilemedi (ağ sorunu)"
+fi
+
+fetch_kext() {
+  local repo="$1" ver="$2" name="$3"
+  local url="https://github.com/acidanthera/${repo}/releases/download/${ver}/${repo}-${ver}-RELEASE.zip"
+  say "${repo} ${ver} indiriliyor"
+  if fetch "$url" "$TMP/${repo}.zip"; then
+    rm -rf "$DEST/kexts/${name}.kext"
+    unzip -q -o "$TMP/${repo}.zip" -d "$TMP/${repo}"
+    # Keştler paket içinde farklı derinlikte olabilir:
+    #   Lilu / WhateverGreen / AppleALC → kökte
+    #   VirtualSMC                        → Kexts/ alt klasöründe
+    # Bu yüzden özyinelemeli arıyoruz.
+    local found
+    found="$(find "$TMP/${repo}" -maxdepth 3 -type d -name "${name}.kext" -print -quit)"
+    if [[ -n "$found" && -d "$found" ]]; then
+      cp -a "$found" "$DEST/kexts/"
+      # zip'ten 644 gelebilir; FAT32/OpenCore için çalıştırma biti gerekmez,
+      # ama yerelde tutarlılık olsun diye 755 yapıyoruz.
+      chmod 0755 "$DEST/kexts/${name}.kext/Contents/MacOS/${name}" 2>/dev/null || true
+      local binary="$DEST/kexts/${name}.kext/Contents/MacOS/${name}"
+      if [[ -f "$binary" ]] && (( $(stat -c%s "$binary") > 10240 )); then
+        ok "${name}.kext hazır ($(( $(stat -c%s "$binary") / 1024 )) KB)"
+      else
+        warn "${name}.kext ikilisi eksik veya bozuk ($binary)"
+      fi
+    else
+      warn "${name}.kext paket içinde bulunamadı (paket yapısı: $(ls "$TMP/${repo}" | tr '\n' ' '))"
+    fi
+  else
+    warn "${repo} indirilemedi"
+  fi
+}
+
+# macOS'un açılması için ZORUNLU kextler — eksikse net hata ver
+verify_required_kexts() {
+  local missing=()
+  for k in Lilu VirtualSMC; do
+    local b="$DEST/kexts/${k}.kext/Contents/MacOS/${k}"
+    [[ -f "$b" ]] && (( $(stat -c%s "$b") > 10240 )) || missing+=("$k")
+  done
+  if (( ${#missing[@]} )); then
+    echo "HATA: zorunlu kext(ler) eksik: ${missing[*]}" >&2
+    return 1
+  fi
+  return 0
+}
+
+fetch_kext Lilu "$LILU_VER" Lilu
+fetch_kext VirtualSMC "$VSMC_VER" VirtualSMC
+fetch_kext WhateverGreen "$WEG_VER" WhateverGreen
+fetch_kext AppleALC "$ALC_VER" AppleALC
+
+say "AMD_Vanilla yamaları indiriliyor"
+if fetch "https://raw.githubusercontent.com/AMD-OSX/AMD_Vanilla/master/patches.plist" "$DEST/patch/amd-vanilla.plist"; then
+  ok "AMD yamaları hazır ($(grep -c '<dict>' "$DEST/patch/amd-vanilla.plist" 2>/dev/null || echo '?') yama)"
+else
+  warn "AMD yamaları indirilemedi — AMD CPU'larda macOS açılmayabilir"
+fi
+
+# ── Bütünlük denetimi ──────────────────────────────────────────────────────
+if ! verify_required_kexts; then
+  warn "Zorunlu bileşenler eksik — macOS bu hâliyle açılmaz."
+  warn "Tekrar deneyin: sudo FORCE_DOWNLOAD=1 macnix-assets"
+  exit 1
+fi
+[[ -f "$DEST/opencore/OC/OpenCore.efi" ]] || { warn "OpenCore.efi eksik"; exit 1; }
+
+# Checkpoint
+touch "$DEST/.complete"
+ok "Varlıklar: $DEST ($(du -sh "$DEST" | cut -f1))"
+ok "Kextler: $(ls "$DEST/kexts" 2>/dev/null | tr '\n' ' ')"
