@@ -336,17 +336,22 @@ stage_overlay() {
 
   # notesqml: Debian'da "notes" modülü yok; notlar QML ile gösterilir.
   # Metinler derleme sırasında (canlı ortamda değil) burada üretilir.
-  install -d "$ROOTFS/etc/calamares/branding/macnix/qml"
-  install -m 0644 "${ROOT}/calamares/qml/notes.qml" \
+  # ── notesqml: marka dizinindeki notes.qml ────────────────────────────────
+  # Calamares marka QML'ini BRANDING DİZİNİNİN KÖKÜNDE arar
+  # (Branding::componentDirectory()), "qml/" alt dizininde DEĞİL. Eski
+  # build.sh dosyayı branding/macnix/qml/notes.qml konumuna kopyalıyordu →
+  # notesqml kendi varsayılan QML'ine düşüyor ve ekranda ham metin yığını
+  # görünüyordu (canlı test: h1.png). Doğru konum: branding/macnix/notes.qml
+  install -d "$ROOTFS/etc/calamares/branding/macnix"
+  install -m 0644 "${ROOT}/calamares/branding/macnix/notes.qml" \
+      "$ROOTFS/etc/calamares/branding/macnix/notes.qml" 2>/dev/null || \
+      warn "notes.qml marka dizinine kopyalanamadı"
+  # Geriye dönük uyumluluk: eski konum da dursun
+  install -d "$ROOTFS/etc/calamares/branding/macnix/qml" "$ROOTFS/etc/calamares/qml"
+  install -m 0644 "${ROOT}/calamares/branding/macnix/notes.qml" \
       "$ROOTFS/etc/calamares/branding/macnix/qml/notes.qml" 2>/dev/null || true
-  install -d "$ROOTFS/etc/calamares/qml"
-  install -m 0644 "${ROOT}/calamares/qml/notes.qml" \
+  install -m 0644 "${ROOT}/calamares/branding/macnix/notes.qml" \
       "$ROOTFS/etc/calamares/qml/notes.qml" 2>/dev/null || true
-  if command -v python3 >/dev/null; then
-    python3 "${ROOT}/scripts/gen-notes-qml.py" \
-      --dest "$ROOTFS/etc/calamares/branding/macnix/qml/notes.qml" \
-      --dest2 "$ROOTFS/etc/calamares/qml/notes.qml" || warn "notes.qml üretilemedi"
-  fi
 
   # ── KİMLİK: users modülünün önerdiği ad/makine adı ────────────────────
   # Kullanıcı hiçbir şey yazmak zorunda değil: alanlar "macnix" ile dolu gelir.
