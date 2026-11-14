@@ -19,7 +19,7 @@
 # ----------------------------------------------------------------------------
 ---
 qmlSearch: branding
-qmlFilename: "finishedq.qml"
+qmlFilename: "finishedq"
 
 # user-unchecked: onay kutusu yok, "Bitir" ile kapanınca yeniden BAŞLATMAZ.
 # (QML'de restartNowWanted açıkça true yapılırsa yeniden başlatır.)
