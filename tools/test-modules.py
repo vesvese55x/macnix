@@ -331,8 +331,13 @@ def test_debian_compat():
     check("sequence 'notes' (Debian'da yok) kullanmıyor", "notes" not in flat, str(flat))
     check("notesqml notlar için kullanılıyor", "notesqml" in flat)
 
-    # 3) kullanılmayan örnek (instances) tanımı yok
-    check("settings.conf 'instances' içermiyor", "instances" not in st)
+    # 3) instances YALNIZCA gerçekten kullanılıyorsa tanımlanmalı.
+    #    (Eskiden "hiç instances olmasın" diye test ediliyordu; Calamares 3.2
+    #     sırada sözlük kabul etmediği için EFI yedeği artık instances ile
+    #     tanımlanıyor — kullanılan her örnek sırada da geçmeli.)
+    for _inst in (st.get("instances") or []):
+        check(f"instances '{_inst.get('id')}' sırada kullanılıyor",
+              _inst.get("id") in flat)
 
     # 4) modules-search çok mimarili dizini içeriyor
     search = " ".join(st.get("modules-search", []))
@@ -394,11 +399,25 @@ def test_debian_compat():
         check("EFI yedeği yoksa kurulumu durdurmuyor", "exit 0" in fbc)
         check("EFI yedeği hedef sistemde (chroot) çalışıyor", "dontChroot: false" in fbc)
     st = open(os.path.join(ROOT, "calamares/settings.conf")).read()
-    check("EFI yedek adımı exec listesinde",
-          "macnix-efi-fallback" in st and "config: macnix-efi-fallback.conf" in st)
-    i_bl = st.find("- bootloader")
-    i_fb = st.find("macnix-efi-fallback")
-    i_um = st.find("- umount")
+    st_clean = "\n".join(l for l in st.splitlines() if not l.strip().startswith("#"))
+    check("EFI yedek adımı exec listesinde", "- macnix-efi-fallback" in st_clean)
+    check("EFI yedeği 'instances:' ile tanımlı (3.2 sözlük kabul etmez)",
+          "instances:" in st_clean and "config: macnix-efi-fallback.conf" in st_clean)
+    # Calamares 3.2: sequence öğeleri SÖZLÜK olamaz → "invalid settings".
+    try:
+        _st = yaml.safe_load(st_clean)
+        _flat = []
+        for _ph in _st.get("sequence", []):
+            for _k, _v in _ph.items():
+                _flat += _v or []
+        check("sequence öğeleri yalnızca metin (sözlük yok)",
+              all(isinstance(x, str) for x in _flat),
+              str([x for x in _flat if not isinstance(x, str)]))
+    except Exception as e:  # noqa: BLE001
+        check("settings.conf YAML olarak okunuyor", False, str(e))
+    i_bl = st_clean.find("- bootloader")
+    i_fb = st_clean.find("- macnix-efi-fallback")
+    i_um = st_clean.find("- umount")
     check("EFI yedeği bootloader'dan SONRA, umount'tan ÖNCE",
           0 < i_bl < i_fb < i_um, f"bootloader={i_bl} fallback={i_fb} umount={i_um}")
 
