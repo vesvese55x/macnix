@@ -125,6 +125,12 @@ calamares
 qml-module-qtquick2
 qml-module-qtquick-controls2
 qml-module-qtquick-layouts
+# Calamares'in QML marka dosyaları (calamares-sidebar.qml / -navigation.qml)
+# Text içinde zengin metin ve emoji kullanmıyor; yine de eksik olduğunda
+# "module QtQuick.Controls is not installed" hatası aldığımız modüller:
+# qml-module-qtgraphicaleffects / -qtquick-shapes KULLANILMIYOR:
+# marka QML'lerimiz yalnızca QtQuick + Controls kullanıyor. Gereksiz bağımlılık
+# eklemek ISO boyutunu ve kırılma riskini artırır.
 qml-module-qtquick-window2
 qml-module-qtqml
 qml-module-qtqml-models2
