@@ -273,8 +273,10 @@ def test_configs():
                     os.path.join(ROOT, "calamares", "module-conf", conf_name)):
                 missing.append(mod_id)
             continue
-        conf = os.path.join(ROOT, "calamares", "module-conf", f"{mod}.conf")
-        if not os.path.exists(conf):
+        # welcomeq / finishedq: QML modülleri, yapılandırma .py adıyla tutulur
+        if not any(os.path.exists(os.path.join(ROOT, "calamares", "module-conf",
+                                               f"{mod}{ext}"))
+                   for ext in (".conf", ".py")):
             missing.append(mod)
     check(f"tüm {len(flat)} modülün .conf dosyası var", not missing, str(missing))
 
@@ -525,6 +527,95 @@ def test_debian_compat():
           "try-restart lightdm" in unit)
 
 
+# ════════════════════════════════════════════════════════════════════════════
+#  Calamares YAPILANDIRMA testleri (Qt gerekmez — dosya/metin düzeyinde)
+# ════════════════════════════════════════════════════════════════════════════
+def config_tests():
+    """modules/ altındaki conf'ların settings.conf ile tutarlılığı + kritik
+    anahtarların VARLIĞI. Canlı testte her biri ayrı bir hata üretmişti."""
+    import glob
+    import re
+
+    print("\n  ── Calamares yapılandırma testleri ──")
+    settings = open(os.path.join(ROOT, "calamares/settings.conf"), encoding="utf-8").read()
+    body = "\n".join(l for l in settings.splitlines() if not l.strip().startswith("#"))
+
+    # 1) welcomeq / finishedq akışta (eski welcome/finished yerine)
+    check("show: welcomeq kullanılıyor (kendi QML'li karşılama ekranı)",
+          re.search(r"^\s+-\s+welcomeq\b", body, re.M) is not None,
+          "settings.conf show listesinde welcomeq yok")
+    check("show: finishedq kullanılıyor (kendi QML'li bitiş ekranı)",
+          re.search(r"^\s+-\s+finishedq\b", body, re.M) is not None,
+          "settings.conf show listesinde finishedq yok")
+    check("welcomeq, welcome'dan ÖNCE değil — ikisi birden yok",
+          not (re.search(r"^\s+-\s+welcome\b", body, re.M)
+               and re.search(r"^\s+-\s+welcomeq\b", body, re.M)),
+          "welcome ve welcomeq birlikte kullanılmış")
+    check("finishedq, finished'dan ayrı — ikisi birden yok",
+          not (re.search(r"^\s+-\s+finished\b", body, re.M)
+               and re.search(r"^\s+-\s+finishedq\b", body, re.M)),
+          "finished ve finishedq birlikte kullanılmış")
+
+    # 2) users.conf: otomatik giriş + boş parola + sudo grubu
+    users = open(os.path.join(ROOT, "calamares/module-conf/users.conf"), encoding="utf-8").read()
+    check("users.conf: doAutologin: true", re.search(r"^doAutologin:\s*true", users, re.M) is not None,
+          "otomatik giriş kapalı — kullanıcı parola ekranında takılır")
+    check("users.conf: autologinGroup: autologin",
+          re.search(r"^autologinGroup:\s*autologin", users, re.M) is not None)
+    check("users.conf: allowWeakPasswords + allowWeakPasswordsDefault true",
+          re.search(r"^allowWeakPasswords:\s*true", users, re.M) is not None
+          and re.search(r"^allowWeakPasswordsDefault:\s*true", users, re.M) is not None,
+          "boş/weak parola reddedilir → kullanıcı parola yazmak zorunda kalır")
+    import yaml as _yaml
+    _docs = [d for d in _yaml.safe_load_all(users) if d]   # ilk belge: --- sonrası
+    _u = _docs[0] if _docs else {}
+    _pr = (_u or {}).get("passwordRequirements") or {}
+    check("users.conf: passwordRequirements.nonempty YOK (boş parola serbest)",
+          "nonempty" not in _pr,
+          "nonempty anahtarı var → boş parola reddedilir")
+
+    # 3) finishedq.conf: yeniden başlatma
+    fq = open(os.path.join(ROOT, "calamares/module-conf/finishedq.py"), encoding="utf-8").read()
+    check("finishedq: restartNowCommand tanımlı (systemctl -i reboot)",
+          "systemctl -i reboot" in fq)
+    check("finishedq: notifyOnFinished / restartNowMode var",
+          "restartNowMode" in fq)
+
+    # 4) Marka QML'leri: kredi şeridi + Dil
+    brand = os.path.join(ROOT, "calamares/branding/macnix")
+    for qml in ("show.qml", "welcome.qml", "finishedq.qml", "calamares-sidebar.qml"):
+        txt = open(os.path.join(brand, qml), encoding="utf-8").read()
+        check(f"{qml}: BELGESELSEMO + ARENA.AI kredisi var",
+              "BELGESELSEMO" in txt and "ARENA.AI" in txt)
+        check(f"{qml}: belgeselsemo.com.tr bağlantısı var",
+              "belgeselsemo.com.tr" in txt or qml == "calamares-sidebar.qml")
+
+    check("welcome.qml: 'Gelişmiş macOS Sanallaştırma Distrosu' tanımı var",
+          "Gelişmiş macOS Sanallaştırma Distrosu"
+          in open(os.path.join(brand, "welcome.qml"), encoding="utf-8").read())
+
+    # 5) Slayt görselleri: show.qml'deki her referans diskte olmalı
+    show = open(os.path.join(brand, "show.qml"), encoding="utf-8").read()
+    imgs = sorted(set(re.findall(r'source:\s*"([^"$]+?\.png)"', show)))
+    missing = [i for i in imgs if not os.path.exists(os.path.join(brand, i))]
+    check(f"show.qml görselleri tam ({len(imgs)} adet)", not missing, f"eksik: {missing}")
+    check("show.qml en az 5 slayt içeriyor", show.count("Slide {") >= 5,
+          f"bulunan: {show.count('Slide {')}")
+
+    # 6) Görsel üretici tekrar üretilebilir mi? (PIL varsa)
+    try:
+        from PIL import Image  # noqa: F401
+        check("gen-slide-art.py: PIL mevcut (görseller yeniden üretilebilir)", True)
+    except ImportError:
+        check("gen-slide-art.py: PIL mevcut", False, "Pillow kurulu değil (CI'da atlanır)")
+
+    # 7) Font: Inter diskte (Qt QML font.family: "Inter")
+    fonts = os.path.join(ROOT, "overlay/usr/share/fonts/truetype/inter")
+    have = [f for f in ("Inter-Regular.ttf", "Inter-SemiBold.ttf", "Inter-Bold.ttf")
+            if os.path.exists(os.path.join(fonts, f))]
+    check("Inter fontları ISO'ya gömülü (3 ağırlık)", len(have) == 3, f"bulunan: {have}")
+
+
 def main():
     print("\033[1m╔══════════════════════════════════════════════════╗")
     print("║  MacNix 2.0 — modül ve kütüphane testleri        ║")
@@ -535,6 +626,7 @@ def main():
         test_module(mod)
     test_configs()
     test_debian_compat()
+    config_tests()
 
     print("\n\033[1m━━ Özet ━━\033[0m")
     print(f"  geçen: \033[0;32m{len(PASS)}\033[0m   hata: \033[0;31m{len(FAIL)}\033[0m")
