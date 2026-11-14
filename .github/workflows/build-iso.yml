@@ -1,4 +1,4 @@
-name: MacNix 2.0 — ISO
+name: MacNix 2.0 — ISO derle ve yayınla
 
 on:
   push:
@@ -17,27 +17,31 @@ permissions:
   contents: write
 
 jobs:
+  # ── 1. Hızlı doğrulama (dakikalar) ──────────────────────────────────────
   validate:
     name: Statik doğrulama + modül testleri
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
 
-      - name: Python ve YAML bağımlılıkları
-        run: |
-          python3 -m pip install --quiet pyyaml
+      - name: Python bağımlılıkları
+        run: python3 -m pip install --quiet pyyaml
 
-      - name: Statik doğrulama (62 denetim)
+      - name: Statik doğrulama
         run: bash tools/validate.sh
 
-      - name: Calamares modül testleri (sahte libcalamares)
+      - name: Calamares modül testleri
         run: python3 tools/test-modules.py
 
+  # ── 2. ISO derleme ──────────────────────────────────────────────────────
   build:
     name: ISO derle
     needs: validate
     runs-on: ubuntu-latest
     timeout-minutes: 90
+    outputs:
+      sha256: ${{ steps.hash.outputs.sha256 }}
+      iso: ${{ steps.hash.outputs.iso }}
     steps:
       - uses: actions/checkout@v4
 
@@ -49,10 +53,10 @@ jobs:
             grub-efi-amd64-bin grub-pc-bin mtools dosfstools \
             isolinux syslinux-common syslinux-utils zstd xz-utils
 
-      # ÖNEMLİ: burada HİÇBİR `sed` yaması yok.
-      # Orijinal iş akışı live-build'i 7 adet sed ile yamalıyordu ve hepsi
-      # `|| true` ile yutuluyordu; sonuç sessizce bozuk ISO'ydu.
-      # MacNix 2.0 live-build kullanmıyor.
+      # NOT: Burada HİÇBİR `sed` yaması yok.
+      # Eski sürümlerde live-build 7 adet sed ile yamalanıyor ve hepsi
+      # `|| true` ile yutuluyordu → sessizce bozuk ISO üretiyordu.
+      # MacNix 2.0 live-build kullanmıyor; build.sh kendi başına çalışır.
       - name: ISO derle
         env:
           BUNDLE_ASSETS: ${{ github.event.inputs.bundle_assets || '1' }}
@@ -61,16 +65,26 @@ jobs:
           sudo -E WORK="$RUNNER_TEMP/build" OUT="$PWD/out" USB_TREE=1 \
             ./build.sh
 
+      - name: Sürüm + SHA256
+        id: hash
+        run: |
+          ISO=$(ls out/*.iso | head -1)
+          echo "iso=$(basename "$ISO")" >> "$GITHUB_OUTPUT"
+          echo "sha256=$(sha256sum "$ISO" | cut -d' ' -f1)" >> "$GITHUB_OUTPUT"
+          echo "### MacNix ISO" >> "$GITHUB_STEP_SUMMARY"
+          echo '```' >> "$GITHUB_STEP_SUMMARY"
+          echo "$(basename "$ISO")  $(du -h "$ISO" | cut -f1)" >> "$GITHUB_STEP_SUMMARY"
+          sha256sum "$ISO" >> "$GITHUB_STEP_SUMMARY"
+          echo '```' >> "$GITHUB_STEP_SUMMARY"
+
       - name: ISO yapısını doğrula
         run: |
           ISO=$(ls out/*.iso)
           echo "ISO: $ISO ($(du -h "$ISO" | cut -f1))"
-          # hibrit önyükleme: hem BIOS hem UEFI El Torito girdisi olmalı
           xorriso -indev "$ISO" -report_el_torito plain 2>/dev/null \
             | grep -E 'El Torito img path' | tee /tmp/et.txt
-          grep -q 'bios.img' /tmp/et.txt || { echo "::warning::BIOS önyükleme yok"; }
-          grep -q 'efi.img'  /tmp/et.txt || { echo "::error::UEFI önyükleme yok"; exit 1; }
-          # canlı sistem dosyaları
+          grep -q 'efi.img'  /tmp/et.txt || { echo "::error::UEFI ön yükleme yok"; exit 1; }
+          grep -q 'bios.img' /tmp/et.txt || { echo "::warning::BIOS ön yükleme yok"; }
           xorriso -indev "$ISO" -ls /live 2>/dev/null | grep -q filesystem.squashfs \
             || { echo "::error::filesystem.squashfs yok"; exit 1; }
 
@@ -83,21 +97,55 @@ jobs:
             out/*.sha256
           retention-days: 14
 
-      - name: Release oluştur
-        if: github.event_name != 'pull_request'
+  # ── 3. Release ──────────────────────────────────────────────────────────
+  release:
+    name: Release
+    needs: build
+    if: github.event_name != 'pull_request'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Artefaktı indir
+        uses: actions/download-artifact@v4
+        with:
+          name: macnix-iso
+          path: out
+
+      - name: Sürüm etiketini oku
+        id: ver
+        run: echo "v=$(cat VERSION)" >> "$GITHUB_OUTPUT"
+
+      - name: Yayınla
         uses: softprops/action-gh-release@v2
         with:
-          tag_name: latest
-          name: MacNix 2.0 (latest)
+          tag_name: v${{ steps.ver.outputs.v }}-${{ github.run_number }}
+          name: MacNix ${{ steps.ver.outputs.v }} (build ${{ github.run_number }})
           body: |
-            MacNix 2.0 — macOS sanallaştırma platformu.
+            ## MacNix ${{ steps.ver.outputs.v }}
 
-            - Hibrit ISO (UEFI + BIOS önyükleme)
-            - Calamares kurulum akışı: `unpackfs` düzeltildi
-            - OpenCore + kextler + AMD yamaları ISO içinde gömülü
-            - GPU'su desteklenmeyen makinelerde yazılım render modu
+            macOS'u Linux üzerinde bir sanal makinede çalıştıran kurulum sistemi.
 
-            `sha256sum` dosyası ile bütünlüğü doğrulayın.
+            **ISO:** `${{ needs.build.outputs.iso }}`
+            **SHA256:** `${{ needs.build.outputs.sha256 }}`
+
+            ### Doğrulanmış
+            - BIOS + UEFI hibrit önyükleme
+            - Calamares kurulumu: bölümleme, unpackfs, kullanıcı, GRUB (EFI **ve** BIOS)
+            - UEFI yedek önyükleyici `\EFI\BOOT\BOOTX64.EFI` (boş NVRAM'de de açılır)
+            - Kurulu sistem BIOS'tan ve UEFI'den açılıyor
+
+            ### Henüz test edilmedi
+            - macOS'un gerçekten kurulup açılması
+            - VFIO GPU passthrough (uyumlu AMD kart gerekir)
+            - Gerçek donanımda kurulum
+
+            GPU hızlandırma yalnızca Apple sürücüsü olan AMD kartlarda
+            (RX 580 / 6600+) mümkündür. Diğer tüm GPU'larda macOS yazılım
+            render ile açılır — bu bir hata değil, Apple'ın sürücü modelinin
+            sonucudur.
+
+            Bütünlük: `sha256sum -c macnix-2.0.0-amd64.iso.sha256`
           files: |
             out/*.iso
             out/*.sha256
