@@ -11,7 +11,7 @@ MacNix 2.0 — macnix-setup (grafik kurulum sihirbazı)
 
 Ağır işi macnix-install-macos yapar; bu arayüz onu çağırıp ilerlemeyi gösterir.
 Root gerektiren komutlar sudoers kuralıyla şifresiz çalışır
-(/etc/sudoers.d/020-macnix).
+(/etc/sudoers.d/99-macnix — 10-installer'dan SONRA okunur).
 
 Kullanım:
     macnix-setup --gui       (varsayılan)
