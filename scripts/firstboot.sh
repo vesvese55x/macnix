@@ -21,6 +21,32 @@ log() { printf '[macnix-firstboot] %s\n' "$*"; }
 
 log "ilk açılış yapılandırması başlıyor"
 
+# ── 0. Canlı ortam hesabını temizle ───────────────────────────────────────
+# Calamares'in "removeuser" job'u Debian 13 (calamares 3.2.61) derlemesinde
+# ETKİSİZ bir stub: userdel çağrısı içermiyor (libcalamares_job_removeuser.so
+# içinde "userdel" metni yok — incelendi). Bu yüzden ISO'dan gelen canlı hesap
+# "macnix-live" kurulu sistemde kalıyor ve /home/macnix-live boşuna duruyor.
+# Temizliği burada, ilk açılışta yapıyoruz (idempotent).
+if id -u macnix-live >/dev/null 2>&1; then
+    if pkill -KILL -u macnix-live 2>/dev/null; then sleep 1; fi
+    if userdel -r macnix-live 2>/dev/null; then
+        log "canlı ortam hesabı macnix-live silindi"
+    else
+        userdel macnix-live 2>/dev/null || true
+        rm -rf /home/macnix-live 2>/dev/null || true
+        log "macnix-live silindi (home ayrıca temizlendi)"
+    fi
+fi
+
+# ── 0b. lightdm autologin: kurulu sistemde "macnix" olmalı ────────────────
+# ISO'dan gelen autologin-user=macnix-live kurulu sistemde hesap olmadığı
+# için oturum açılamaz durumda kalırdı.
+LDMC="/etc/lightdm/lightdm.conf.d/50-macnix.conf"
+if [[ -f "$LDMC" ]] && grep -q '^autologin-user=macnix-live' "$LDMC"; then
+    sed -i 's/^autologin-user=macnix-live/autologin-user=macnix/' "$LDMC"
+    log "lightdm autologin macnix yapıldı"
+fi
+
 # ── 1. CPU / RAM gerçek değerlerle vm.conf'u güncelle ──────────────────────
 VM_CONF="/etc/macnix/vm.conf"
 total_ram_mb=$(awk '/MemTotal/ {printf "%d", $2/1024}' /proc/meminfo)
