@@ -1,13 +1,17 @@
 [Unit]
-Description=MacNix First Boot Configuration
-After=network-online.target
+Description=MacNix ilk açılış hazırlığı
+After=network-online.target systemd-udev-settle.service
+Wants=network-online.target
 ConditionPathExists=!/etc/macnix/.firstboot-done
+ConditionKernelCommandLine=!macnix.live=1
 
 [Service]
 Type=oneshot
-ExecStart=/opt/macnix/scripts/firstboot.sh
 RemainAfterExit=yes
+ExecStart=/opt/macnix/scripts/firstboot.sh
+TimeoutStartSec=300
 StandardOutput=journal+console
+StandardError=journal+console
 
 [Install]
 WantedBy=multi-user.target
