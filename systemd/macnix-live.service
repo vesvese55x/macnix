@@ -1,0 +1,29 @@
+# ============================================================================
+#  MacNix 2.0 — canlı ortam hazırlığı
+# ============================================================================
+#  SIRALAMA KRİTİK (canlı testte doğrulandı):
+#  Bu servis, /etc altındaki izinleri ve LightDM otomatik giriş ayarını
+#  onarır. Eğer LightDM'den SONRA çalışırsa Calamares kendiliğinden açılmaz
+#  ve kullanıcı giriş ekranında kalır. Bu yüzden:
+#     Before=lightdm.service display-manager.service
+#  ve kısa bir ExecStartPre ile LightDM'in gerçekten durması beklenir.
+# ----------------------------------------------------------------------------
+[Unit]
+Description=MacNix canlı ortam hazırlığı
+After=systemd-user-sessions.service systemd-remount-fs.service
+Before=lightdm.service display-manager.service getty@tty1.service
+ConditionKernelCommandLine=macnix.live=1
+DefaultDependencies=no
+Conflicts=shutdown.target
+
+[Service]
+Type=oneshot
+RemainAfterExit=yes
+ExecStart=/opt/macnix/scripts/live-boot.sh
+TimeoutStartSec=180
+StandardOutput=journal+console
+# lightdm bir şekilde önce başladıysa yeniden başlat ki yeni ayarlar okunsun
+ExecStartPost=-/bin/systemctl try-restart lightdm.service
+
+[Install]
+WantedBy=multi-user.target
