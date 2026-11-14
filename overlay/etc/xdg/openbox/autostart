@@ -1,0 +1,54 @@
+# MacNix 2.0 — openbox oturum başlangıcı
+# Canlı ortamda: masaüstü arka planı + kurulum sihirbazı
+# Kurulu sistemde: MacNix kontrol paneli
+
+xsetroot -solid "#101014"
+xset s off -dpms 2>/dev/null || true
+nm-applet --sm-disable >/dev/null 2>&1 &
+(sleep 1; xdotool mousemove 200 200 2>/dev/null) || true
+
+if grep -q 'macnix.live=1' /proc/cmdline 2>/dev/null; then
+    # Canlı ortam: doğrudan Calamares + GÖZCÜ
+    # ---------------------------------------------------------------------
+    # Gözcü neden var: Calamares bazı grafik/QML hatalarında hiçbir hata
+    # yazmadan sessizce kapanabiliyor (canlı testte gözlendi). Bu durumda
+    # kullanıcı boş bir masaüstüyle kalıyordu. Gözcü, Calamares penceresi
+    # görünürken ölürse 20 saniye içinde en fazla 3 kez yeniden başlatır;
+    # hâlâ açılmıyorsa kullanıcıyı metin moduna yönlendirir.
+    (
+      tries=0
+      while [ "$tries" -lt 3 ]; do
+        tries=$((tries+1))
+        calamares_pid=""
+        sudo -n calamares -d > /tmp/calamares.log 2>&1 &
+        calamares_pid=$!
+        # Calamares çalıştığı sürece bekle
+        waited=0
+        while kill -0 "$calamares_pid" 2>/dev/null && [ "$waited" -lt 600 ]; do
+          sleep 2
+          waited=$((waited+2))
+        done
+        kill -0 "$calamares_pid" 2>/dev/null && break      # hâlâ çalışıyor: normal çıkış
+        # 20 saniyeden kısa sürede öldüyse çökme say
+        if [ "$waited" -lt 20 ]; then
+          echo "[macnix] Calamares erken kapandı (deneme $tries/3) — günlük: /tmp/calamares.log" >> /tmp/macnix-greeter.log
+          sleep 5
+        else
+          break                                            # kullanıcı kapattı
+        fi
+      done
+      if ! pgrep -x calamares >/dev/null 2>&1 && [ "$tries" -ge 3 ]; then
+        # NOT: xmessage kaçış dizilerini YORUMLAMAZ. "\n" yazıldığında ekranda
+        # düz "\n" görünüyordu (canlı testte birebir gözlendi). Bu yüzden
+        # metin printf ile gerçek satır sonlarına çevrilip öyle veriliyor.
+        xmessage -center "$(printf '%s\n\n%s\n\n%s\n\n%s' \
+          'Calamares başlatılamadı.' \
+          'Metin modunda kurulum için bir terminalde:' \
+          '    sudo macnix-tui' \
+          'Günlük: /tmp/calamares.log')" 2>/dev/null || true
+      fi
+    ) &
+else
+    # Kurulu sistem: kontrol paneli
+    (sleep 2; /usr/local/bin/macnix-setup --gui > /tmp/macnix-setup.log 2>&1) &
+fi
