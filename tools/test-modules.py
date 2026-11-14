@@ -335,9 +335,16 @@ def test_debian_compat():
         for _k, items in phase.items():
             flat.extend(items or [])
 
-    # notes/notesqml: Debian'da "notes" YOK. "notesqml" QML modülleri ister.
-    check("sequence 'notes' (Debian'da yok) kullanmıyor", "notes" not in flat, str(flat))
-    check("notesqml notlar için kullanılıyor", "notesqml" in flat)
+    # 2026-11-14 DÜZELTMESİ: "notes" modülü ASLINDA Debian calamares
+    # paketinde VAR (packages.debian.org/bookworm/amd64/calamares/filelist:
+    # modules/finished, finishedq, notesqml, welcome, welcomeq — notes
+    # modülü C++ tarafta gömülü). "notes" sırada olmalı; notesqml ise
+    # canlı VM'de QML yükleyemediği için kullanılmıyor.
+    # 2026-11-14: "notes" modülü Calamares'te YOK (yerel 3.3.14: "notes@notes
+    # could not be loaded"; Debian bookworm'da da yalnız notesqml var).
+    # Bilgilendirme görevi slaytlara (show.qml) ve karşılama metnine verildi.
+    check("'notes' modülü kullanılmıyor (Calamares'te yok)", "notes" not in flat, str(flat))
+    check("notesqml kullanılmıyor (QML yüklenemedi)", "notesqml" not in flat)
 
     # 3) instances YALNIZCA gerçekten kullanılıyorsa tanımlanmalı.
     #    (Eskiden "hiç instances olmasın" diye test ediliyordu; Calamares 3.2
@@ -543,20 +550,27 @@ def config_tests():
     body = "\n".join(l for l in settings.splitlines() if not l.strip().startswith("#"))
 
     # 1) welcomeq / finishedq akışta (eski welcome/finished yerine)
-    check("show: welcomeq kullanılıyor (kendi QML'li karşılama ekranı)",
-          re.search(r"^\s+-\s+welcomeq\b", body, re.M) is not None,
-          "settings.conf show listesinde welcomeq yok")
-    check("show: finishedq kullanılıyor (kendi QML'li bitiş ekranı)",
-          re.search(r"^\s+-\s+finishedq\b", body, re.M) is not None,
-          "settings.conf show listesinde finishedq yok")
-    check("welcomeq, welcome'dan ÖNCE değil — ikisi birden yok",
-          not (re.search(r"^\s+-\s+welcome\b", body, re.M)
-               and re.search(r"^\s+-\s+welcomeq\b", body, re.M)),
-          "welcome ve welcomeq birlikte kullanılmış")
-    check("finishedq, finished'dan ayrı — ikisi birden yok",
-          not (re.search(r"^\s+-\s+finished\b", body, re.M)
-               and re.search(r"^\s+-\s+finishedq\b", body, re.M)),
-          "finished ve finishedq birlikte kullanılmış")
+    # Canlı VM dersi: QML view modülleri (welcomeq/finishedq/notesqml) bu
+    # ortamda QML yükleyemedi → "Welcome Loading failed." C++ modüllerine
+    # dönüldü. Aşağıdaki testler bunu kilitler.
+    check("show: welcome (C++) kullanılıyor",
+          re.search(r"^\s+-\s+welcome\b", body, re.M) is not None,
+          "settings.conf show listesinde welcome yok")
+    check("show: finished (C++) kullanılıyor",
+          re.search(r"^\s+-\s+finished\b", body, re.M) is not None,
+          "settings.conf show listesinde finished yok")
+    check("QML view modülleri (welcomeq/finishedq/notesqml) AKIŞTA DEĞİL",
+          not re.search(r"^\s+-\s+(welcomeq|finishedq|notesqml)\b", body, re.M),
+          "QML modülü hâlâ akışta — canlı VM'de 'Loading failed' riski")
+    check("slideshow QML marka dosyası var (show.qml)",
+          os.path.exists(os.path.join(ROOT, "calamares/branding/macnix/show.qml")))
+    _show = open(os.path.join(ROOT, "calamares/branding/macnix/show.qml"),
+                 encoding="utf-8").read()
+    check("show.qml slaytları bilgilendirici (en az 6 slayt)",
+          _show.count("Slide {") >= 6, f"Slide sayısı: {_show.count('Slide {')}")
+    # kredi şeridi TEK bir altbilgi öğesinde (tüm slaytların üstünde sabit)
+    check("show.qml kredi şeridi var (altbilgi)",
+          _show.count("BELGESELSEMO") >= 2 and "belgeselsemo.com.tr" in _show)
 
     # 2) users.conf: otomatik giriş + boş parola + sudo grubu
     users = open(os.path.join(ROOT, "calamares/module-conf/users.conf"), encoding="utf-8").read()
@@ -577,24 +591,27 @@ def config_tests():
           "nonempty anahtarı var → boş parola reddedilir")
 
     # 3) finishedq.conf: yeniden başlatma
-    fq = open(os.path.join(ROOT, "calamares/module-conf/finishedq.conf"), encoding="utf-8").read()
-    check("finishedq: restartNowCommand tanımlı (systemctl -i reboot)",
-          "systemctl -i reboot" in fq)
-    check("finishedq: notifyOnFinished / restartNowMode var",
-          "restartNowMode" in fq)
+    # Bitiş ekranı artık C++ finished modülü: yeniden başlatma komutu orada.
+    fin = open(os.path.join(ROOT, "calamares/module-conf/finished.conf"),
+               encoding="utf-8").read()
+    check("finished.conf: restartNowCommand var (systemctl -i reboot)",
+          "systemctl -i reboot" in fin)
 
     # 4) Marka QML'leri: kredi şeridi + Dil
     brand = os.path.join(ROOT, "calamares/branding/macnix")
-    for qml in ("show.qml", "welcome.qml", "finishedq.qml", "calamares-sidebar.qml"):
-        txt = open(os.path.join(brand, qml), encoding="utf-8").read()
-        check(f"{qml}: BELGESELSEMO + ARENA.AI kredisi var",
-              "BELGESELSEMO" in txt and "ARENA.AI" in txt)
-        check(f"{qml}: belgeselsemo.com.tr bağlantısı var",
-              "belgeselsemo.com.tr" in txt or qml == "calamares-sidebar.qml")
-
-    check("welcome.qml: 'Gelişmiş macOS Sanallaştırma Distrosu' tanımı var",
-          "Gelişmiş macOS Sanallaştırma Distrosu"
-          in open(os.path.join(brand, "welcome.qml"), encoding="utf-8").read())
+    show_txt = open(os.path.join(brand, "show.qml"), encoding="utf-8").read()
+    check("show.qml: BELGESELSEMO + ARENA.AI kredisi var",
+          "BELGESELSEMO" in show_txt and "ARENA.AI" in show_txt)
+    check("show.qml: belgeselsemo.com.tr bağlantısı var",
+          "belgeselsemo.com.tr" in show_txt)
+    check("show.qml: 'Gelişmiş macOS Sanallaştırma Distrosu' tanımı var",
+          "Gelişmiş macOS Sanallaştırma Distrosu" in show_txt)
+    bd = open(os.path.join(brand, "branding.desc"), encoding="utf-8").read()
+    check("branding.desc: zorunlu kredi satırı (birebir)",
+          "BELGESELSEMO tarafından ARENA.AI sayesinde" in bd
+          and "local-over/macnix" in bd and "belgeselsemo.com.tr" in bd)
+    check("branding.desc: 'Gelişmiş macOS Sanallaştırma Distrosu' ürün adında",
+          "Gelişmiş macOS Sanallaştırma Distrosu" in bd)
 
     # 5) Slayt görselleri: show.qml'deki her referans diskte olmalı
     show = open(os.path.join(brand, "show.qml"), encoding="utf-8").read()
