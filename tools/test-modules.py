@@ -434,6 +434,11 @@ def test_debian_compat():
     check("gpu-config hedef kök yoksa hata döndürüyor (tek gerçek hata)",
           'return ("Kurulum hedefi bulunamadı"' in gpu)
 
+    # GRUB modül listesi sabit olmamalı: GRUB 2.12 efi_uga.mod'u kaldırdı ve
+    # GitHub runner'da derleme "cannot open efi_uga.mod" ile patladı.
+    check("build.sh GRUB EFI modüllerini sistemde var olanlardan süzüyor",
+          '[[ -f "$moddir/$m.mod" ]]' in build and 'missing+=' in build)
+
     check("build.sh /etc sahipliğini root'a çekiyor",
           "chown -R 0:0" in build and "$ROOTFS/etc" in build)
     # sıra kritik: chown overlay kopyasından SONRA çalışmalı
