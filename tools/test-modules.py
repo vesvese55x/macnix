@@ -484,7 +484,9 @@ def test_debian_compat():
           "chown -R 0:0" in build and "$ROOTFS/etc" in build)
     # sıra kritik: chown overlay kopyasından SONRA çalışmalı
     i_ov = build.find('cp -a "${ROOT}/overlay/."')
-    i_fixown = build.find("fix_ownership\n  fix_lightdm_autologin")
+    # 2026-11-14: araya finalize_calamares_config() girdi; sıra şöyle:
+    #   fix_ownership → fix_lightdm_autologin → finalize_calamares_config
+    i_fixown = build.find("  fix_ownership\n  fix_lightdm_autologin")
     check("sahiplik düzeltmesi overlay kopyasından SONRA çağrılıyor",
           0 < i_ov < i_fixown, f"overlay={i_ov}, fix_ownership={i_fixown}")
     check("build.sh mksquashfs'te /dev /proc /sys /run /tmp hariç tutmuyor",
@@ -502,7 +504,7 @@ def test_debian_compat():
           "autologin-user" in build and "lightdm.conf" in build)
     # sıra kritik: düzeltme overlay kopyasından SONRA çalışmalı
     i_overlay = build.find('cp -a "${ROOT}/overlay/."')
-    i_fix = build.find("fix_lightdm_autologin\n  ok")
+    i_fix = build.find("  fix_lightdm_autologin\n  finalize_calamares_config")
     check("lightdm düzeltmesi overlay kopyasından SONRA çağrılıyor",
           0 < i_overlay < i_fix, f"overlay={i_overlay}, fix={i_fix}")
     # boru hattı ERR tuzağını yanıltıp aşamayı sessizce kesmemeli
@@ -575,7 +577,7 @@ def config_tests():
           "nonempty anahtarı var → boş parola reddedilir")
 
     # 3) finishedq.conf: yeniden başlatma
-    fq = open(os.path.join(ROOT, "calamares/module-conf/finishedq.py"), encoding="utf-8").read()
+    fq = open(os.path.join(ROOT, "calamares/module-conf/finishedq.conf"), encoding="utf-8").read()
     check("finishedq: restartNowCommand tanımlı (systemctl -i reboot)",
           "systemctl -i reboot" in fq)
     check("finishedq: notifyOnFinished / restartNowMode var",
