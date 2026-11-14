@@ -1,0 +1,100 @@
+#!/usr/bin/env bash
+# ============================================================================
+#  MacNix 2.0 — metin modu kurulum / kurtarma aracı
+# ============================================================================
+#  Grafik ortam açılmadığında (bozuk GPU sürücüsü, eski donanım, sunucu)
+#  kurulumu metin modunda yapmayı sağlar.
+#
+#  Kullanım:
+#     sudo macnix-tui            # menü
+#     sudo macnix-tui install    # kurulumu doğrudan başlat
+#     sudo macnix-tui shell      # kurtarma kabuğu
+# ============================================================================
+set -uo pipefail
+
+C_OK=$'\033[0;32m'; C_WA=$'\033[1;33m'; C_ER=$'\033[0;31m'
+C_B=$'\033[1m'; C_D=$'\033[2m'; C_R=$'\033[0m'
+
+[[ $EUID -eq 0 ]] || { echo "root gerekli: sudo macnix-tui"; exit 1; }
+
+banner() {
+  clear
+  printf '%s' "$C_B"
+  cat <<'EOF'
+   ███╗   ███╗ █████╗  ██████╗███╗   ██╗██╗██╗  ██╗
+   ████╗ ████║██╔══██╗██╔════╝████╗  ██║██║╚██╗██╔╝
+   ██╔████╔██║███████║██║     ██╔██╗ ██║██║ ╚███╔╝
+   ██║╚██╔╝██║██╔══██║██║     ██║╚██╗██║██║ ██╔██╗
+   ██║ ╚═╝ ██║██║  ██║╚██████╗██║ ╚████║██║██╔╝ ██╗
+   ╚═╝     ╚═╝╚═╝  ╚═╝ ╚═════╝╚═╝  ╚═══╝╚═╝╚═╝  ╚═╝
+EOF
+  printf '   macOS sanallastirma platformu — metin modu%s\n\n' "$C_R"
+}
+
+do_install() {
+  # Medya kontrolü
+  media=""
+  for c in /run/live/medium /lib/live/mount/medium /run/macnix-media /cdrom; do
+    [[ -f "$c/live/filesystem.squashfs" ]] && { media="$c"; break; }
+  done
+  if [[ -z "$media" ]]; then
+    printf '%s  HATA: canlı medya bulunamadı.%s\n' "$C_ER" "$C_R"
+    printf '  ISO düzgün yazılmamış olabilir. Kontrol: ls /run/live /lib/live/mount\n'
+    return 1
+  fi
+  echo "  medya: $media"
+  echo
+  echo "  Calamares başlatılıyor (X yoksa Qt platform hatası verebilir)."
+  echo "  Grafik arayüz açılmazsa 'macnix-tui shell' ile elle kurulum yapın."
+  echo
+  QT_QPA_PLATFORM=minimal calamares -d 2>&1 | tee /tmp/calamares-tui.log
+}
+
+do_shell() {
+  cat <<EOF
+
+${C_B}MacNix kurtarma kabuğu${C_R}
+${C_D}Elle kurulum için adımlar:
+ 1. Disk bölümle:      cfdisk /dev/sdX   (GPT, 512M EFI + gerisi Linux)
+ 2. Biçimlendir:       mkfs.vfat -F32 /dev/sdX1 && mkfs.ext4 /dev/sdX2
+ 3. Bağla:             mount /dev/sdX2 /mnt && mkdir -p /mnt/boot/efi
+                       mount /dev/sdX1 /mnt/boot/efi
+ 4. Sistemi aç:        unsquashfs -f -d /mnt /run/live/medium/live/filesystem.squashfs
+ 5. chroot hazırla:    for d in dev proc sys run; do mount --bind /\$d /mnt/\$d; done
+                       chroot /mnt /bin/bash
+ 6. chroot içinde:     grub-install --target=x86_64-efi --efi-directory=/boot/efi \\
+                         --bootloader-id=MacNix --removable
+                       update-grub && update-initramfs -u -k all
+ 7. Çık ve yeniden başlat: exit; umount -R /mnt; reboot
+${C_D}Kurulum sonrası ilk açılışta macOS imajı indirilir.
+${C_R}
+EOF
+  exec /bin/bash --login
+}
+
+case "${1:-menu}" in
+  install) do_install ;;
+  shell) do_shell ;;
+  menu|*)
+    while true; do
+      banner
+      echo "  1) macOS kurulumunu başlat (Calamares)"
+      echo "  2) Donanım tanılaması (macnix-doctor)"
+      echo "  3) Kurtarma kabuğu (elle kurulum talimatlarıyla)"
+      echo "  4) Günlükleri göster"
+      echo "  5) Yeniden başlat"
+      echo "  6) Çıkış (kabuk)"
+      echo
+      read -rp "  Seçim [1-6]: " choice
+      case "$choice" in
+        1) do_install; read -rp "Devam için Enter…" _ ;;
+        2) /usr/local/bin/macnix-doctor 2>&1 | less -R 2>/dev/null || /usr/local/bin/macnix-doctor ;;
+        3) do_shell ;;
+        4) less -R /var/log/macnix-live.log 2>/dev/null || cat /var/log/macnix-live.log 2>/dev/null ;;
+        5) reboot ;;
+        6) exec /bin/bash --login ;;
+        *) echo "  geçersiz seçim"; sleep 1 ;;
+      esac
+    done
+    ;;
+esac
