@@ -27,7 +27,8 @@ Item {
     property int seconds: 30
     // finished modülünün Config nesnesi: failed / failureMessage / failureDetails
     // / restartNowWanted / doRestart(). (Q_PROPERTY + public slot — doğrulandı.)
-    property bool failed: config ? config.failed : false
+    // config QML bağlam özelliği olarak gelir (QmlViewStep::setContextProperty).
+    property bool failed: (typeof config !== 'undefined' && config) ? config.failed : false
     property bool counting: !doneRoot.failed
 
     Timer {
@@ -52,22 +53,25 @@ Item {
         anchors.topMargin: 30
         spacing: 12
 
-        Image {
-            source: "macnix_logo.png"
-            visible: !doneRoot.failed
-            width: 96; height: 96
-            fillMode: Image.PreserveAspectFit
-            smooth: true
+        Row {
             anchors.horizontalCenter: parent.horizontalCenter
-        }
+            spacing: 16
 
-        Text {
-            width: parent.width
-            horizontalAlignment: Text.AlignHCenter
-            text: doneRoot.failed ? "Kurulum tamamlanamadı"
-                                : "Kurulum tamamlandı"
-            color: doneRoot.failed ? "#FF453A" : "#FFFFFF"
-            font { family: "Inter"; pixelSize: 34; weight: Font.Bold }
+            Image {
+                source: "macnix_logo.png"
+                visible: !doneRoot.failed
+                width: 72; height: 72
+                fillMode: Image.PreserveAspectFit
+                smooth: true
+                anchors.verticalCenter: parent.verticalCenter
+            }
+
+            Text {
+                text: doneRoot.failed ? "Kurulum tamamlanamadı" : "Kurulum tamamlandı"
+                color: doneRoot.failed ? "#FF453A" : "#FFFFFF"
+                font { family: "Inter"; pixelSize: 30; weight: Font.Bold }
+                anchors.verticalCenter: parent.verticalCenter
+            }
         }
 
         Text {
@@ -90,7 +94,7 @@ Item {
         Rectangle {
             visible: !doneRoot.failed
             width: parent.width
-            height: 74
+            height: 64
             radius: 14
             color: "#12141A"
             border.width: 1
@@ -101,7 +105,7 @@ Item {
                 spacing: 4
                 Text {
                     anchors.horizontalCenter: parent.horizontalCenter
-                    text: "Kurulum " + doneRoot.seconds + " saniye içinde kendini kapatacak"
+                    text: doneRoot.seconds + " saniye içinde kendini kapatıp yeniden başlatacak"
                     color: "#C7C7CF"
                     font { family: "Inter"; pixelSize: 13 }
                 }
@@ -153,7 +157,7 @@ Item {
 
         Button {
             id: closeBtn
-            text: doneRoot.failed ? "Kapat" : "Yeniden başlatmadan bitir"
+            text: doneRoot.failed ? "Kapat" : "Sadece kapat"
             onClicked: {
                 doneRoot.counting = false;
                 ViewManager.quit();
@@ -202,9 +206,8 @@ Item {
             elide: Text.ElideRight
             color: "#7C7C86"
             font { family: "Inter"; pixelSize: 11 }
-            text: "MacNix · Gelişmiş macOS Sanallaştırma Distrosu  —  " +
-                  "BELGESELSEMO tarafından ARENA.AI sayesinde geliştirildi  ·  " +
-                  "belgeselsemo.com.tr  ·  github.com/local-over/macnix"
+            text: "MacNix · Gelişmiş macOS Sanallaştırma Distrosu — BELGESELSEMO " +
+                  "tarafından ARENA.AI sayesinde geliştirildi · belgeselsemo.com.tr"
         }
     }
 }
