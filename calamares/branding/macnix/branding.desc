@@ -10,7 +10,10 @@ strings:
     versionedName:       "MacNix 2.0"
     shortVersionedName:  "MacNix 2.0"
     bootloaderEntryName: "MacNix"
-    productUrl:          "https://github.com/vesvese55x/macnix"
+    # "Gelişmiş macOS Sanallaştırma Distrosu" tanımı arayüzde (welcome /
+    # notesqml / slaytlar / finished) gösterilir; Calamares'in ürün adı
+    # alanı kısa tutuluyor ki pencere başlığı taşmasın.
+    productUrl:          "https://belgeselsemo.com.tr"
     supportUrl:          "https://github.com/vesvese55x/macnix/issues"
     knownIssuesUrl:      "https://github.com/vesvese55x/macnix/issues"
     releaseNotesUrl:     "https://github.com/vesvese55x/macnix/releases"
