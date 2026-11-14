@@ -1,5 +1,0 @@
----
-type: "job"
-name: "macnix-welcome"
-interface: "python"
-script: "main.py"
