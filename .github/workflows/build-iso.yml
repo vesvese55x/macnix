@@ -33,6 +33,9 @@ jobs:
       - name: Calamares modül testleri
         run: python3 tools/test-modules.py
 
+      - name: mount yaması regresyon testi
+        run: python3 tools/test-mount-patch.py
+
   # ── 2. ISO derleme ──────────────────────────────────────────────────────
   build:
     name: ISO derle
