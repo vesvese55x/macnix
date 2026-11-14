@@ -269,6 +269,41 @@ stage_overlay() {
     chmod 0755 "$CAL_MOD_DIR/$m/main.py"
   done
 
+  # ---------------------------------------------------------------------
+  # mount modülü YAMASI (MacNix 2.0 — canlı kurulumda yakalanan hata)
+  # ---------------------------------------------------------------------
+  # Debian calamares 3.2.61'in mount/main.py dosyası, bölüm bilgisindeki
+  # `options` değerini olduğu gibi libcalamares.utils.mount()'a veriyor:
+  #
+  #     libcalamares.utils.mount(device, mount_point, fstype,
+  #                              partition.get("options", ""))
+  #
+  # C++ tarafındaki imza DÖRT std::string istiyor:
+  #     CalamaresPython::mount(string, string, string, string)
+  # `options` bir liste olduğunda (bölümleme modülü bazı akışlarda liste
+  # üretiyor) Boost.Python şu hatayı fırlatıyor ve kurulum TAM O NOKTADA
+  # düşüyor ("Kurulum Başarısız · Boost.Python is hasatı mount"):
+  #
+  #     Boost.Python.ArgumentError: Python argument types in
+  #       libcalamares.utils.mount(str, str, str, list)
+  #     did not match C++ signature: ... mount(std::string x4)
+  #
+  # Aşağıdaki döngü, ISO'ya giren mount modülünü kopyaladıktan hemen
+  # SONRA (yani son söz bizim olsun diye) repodaki düzeltilmiş sürümle
+  # değiştirir. Düzeltme: options her zaman string'e normalize edilir
+  # (bkz. calamares/modules/mount/main.py -> _mount_options()).
+  local MOUNT_SRC MOUNT_DST
+  MOUNT_SRC="${ROOT}/calamares/modules/mount/main.py"
+  MOUNT_DST="$CAL_MOD_DIR/mount/main.py"
+  if [[ -f "$MOUNT_SRC" ]]; then
+    install -d "$CAL_MOD_DIR/mount"
+    install -m 0755 "$MOUNT_SRC" "$MOUNT_DST"
+    ok "mount/main.py yaması uygulandı (options → string normalizasyonu)"
+  else
+    warn "calamares/modules/mount/main.py yok — mount hatası tekrar edebilir"
+  fi
+
+
   for f in "${ROOT}"/calamares/module-conf/*.conf; do
     [[ -f "$f" ]] || continue
     install -m 0644 "$f" "$ROOTFS/etc/calamares/modules/$(basename "$f")"
