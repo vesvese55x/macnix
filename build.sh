@@ -487,11 +487,28 @@ stage_isotree() {
 build_efi() {
   log "EFI önyükleyici üretiliyor"
   local efi="$ISOTREE/EFI/BOOT/BOOTX64.EFI"
+
+  # GRUB modülleri sürümden sürüme değişir. Örnek (gerçek hata, GitHub
+  # ubuntu-latest runner'da yakalandı):
+  #   grub-mkstandalone: error: cannot open
+  #       `/usr/lib/grub/x86_64-efi/efi_uga.mod': No such file or directory
+  # GRUB 2.12 efi_uga.mod'u kaldırdı. Bu yüzden modül listesi SABİT değil,
+  # sistemde GERÇEKTEN bulunan modüllerden süzülüyor.
+  local moddir="/usr/lib/grub/x86_64-efi"
+  local want="part_gpt part_msdos fat ext2 iso9660 udf ntfs normal linux all_video
+              gfxterm gfxmenu font search search_label search_fs_uuid search_fs_file
+              configfile loopback chain efi_gop efi_uga video_bochs video_cirrus
+              echo test sleep reboot halt serial terminal minicmd"
+  local modules=() m missing=()
+  for m in $want; do
+    [[ -f "$moddir/$m.mod" ]] && modules+=("$m") || missing+=("$m")
+  done
+  (( ${#modules[@]} )) || die "hiç GRUB EFI modülü bulunamadı ($moddir)"
+  [[ ${#missing[@]} -gt 0 ]] && warn "bu GRUB sürümünde yok (atlandı): ${missing[*]}"
+  log "EFI modülleri: ${#modules[@]} adet"
+
   grub-mkstandalone --format=x86_64-efi --output="$efi" \
-    --modules="part_gpt part_msdos fat ext2 iso9660 udf ntfs normal linux all_video \
-               gfxterm gfxmenu font search search_label search_fs_uuid search_fs_file \
-               configfile loopback chain efi_gop efi_uga video_bochs video_cirrus \
-               echo test sleep reboot halt serial terminal minicmd" \
+    --modules="${modules[*]}" \
     --locales="" --themes="" --fonts="" \
     "boot/grub/grub.cfg=${ROOT}/config/grub/grub-efi-embed.cfg"
   ok "BOOTX64.EFI ($(du -h "$efi" | cut -f1))"
