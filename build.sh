@@ -493,6 +493,7 @@ EOF
 
   fix_ownership
   fix_lightdm_autologin
+  finalize_calamares_config
   ok "chroot yapılandırması tamam"
 }
 
@@ -515,6 +516,54 @@ fix_ownership() {
   else
     ok "sahiplikler root:root (sudo/sudoers.d dahil)"
   fi
+}
+
+# ── Son rötuş: Calamares yapılandırması ────────────────────────────────────
+# TARİHÇE (2026-11-14): Repodaki calamares/module-conf/*.py dosyalarında
+# `qmlFilename: "welcome"` olmasına rağmen ISO içinde "welcome.qml" çıkıyordu;
+# branding.desc da eski `sidebar: qml` satırıyla geliyordu. Yani bir aşama bu
+# dosyaları repo sürümüyle EZMİYORDU (kaynaktan kopyalama sırası). Artık
+# chroot kurulumunun EN SONUNDA, dosyalar TEK TEK ve açıkça yazılıyor;
+# sonra içerikleri doğrulanıyor (yanlış içerik → derleme UYARIYLA değil,
+# doğrulama çıktısıyla görünür).
+finalize_calamares_config() {
+  local d="$ROOTFS/etc/calamares"
+  install -d "$d/modules" "$d/branding/macnix"
+
+  # qmlFilename UZANTISIZ olmalı: Calamares ".qml" ekini kendisi ekler.
+  # Her iki adı da yaz (Calamares <modül>.conf ya da <modül>.py arar).
+  local q
+  for q in welcomeq finishedq; do
+    [[ -f "${ROOT}/calamares/module-conf/${q}.conf" ]] && \
+      install -m 0644 "${ROOT}/calamares/module-conf/${q}.conf" "$d/modules/${q}.conf"
+    [[ -f "${ROOT}/calamares/module-conf/${q}.py" ]] && \
+      install -m 0644 "${ROOT}/calamares/module-conf/${q}.py"   "$d/modules/${q}.py"
+  done
+  install -m 0644 "${ROOT}/calamares/module-conf/notesqml.conf" "$d/modules/notesqml.conf"
+
+  # marka dosyaları (QML + görseller) — QML paneli kullanılmıyor (varsayılan menü)
+  local f
+  for f in "${ROOT}"/calamares/branding/macnix/*; do
+    [[ -f "$f" ]] || continue
+    install -m 0644 "$f" "$d/branding/macnix/$(basename "$f")"
+  done
+
+  # settings.conf: @MULTIARCH@ yer tutucusu + welcomeq/finishedq sırası
+  sed "s/@MULTIARCH@/${MACNIX_MULTIARCH:-$(gcc -dumpmachine)}/g" \
+      "${ROOT}/calamares/settings.conf" > "$d/settings.conf"
+  chmod 0644 "$d/settings.conf"
+
+  # ── Doğrulama: yanlış içerik derlemeyi durdurur (sessiz kalmaktansa) ────
+  local err=0
+  grep -q 'qmlFilename: "welcome"'   "$d/modules/welcomeq.conf"  || { warn "welcomeq.conf: qmlFilename uzantılı!"; err=1; }
+  grep -q 'qmlFilename: "finishedq"' "$d/modules/finishedq.conf" || { warn "finishedq.conf: qmlFilename uzantılı!"; err=1; }
+  grep -q 'qmlFilename: "notes"'     "$d/modules/notesqml.conf"  || { warn "notesqml.conf: qmlFilename yok/uzantılı"; err=1; }
+  grep -q '^sidebar:.*qml'           "$d/branding/macnix/branding.desc" && \
+      warn "branding.desc: QML yan menü etkin (kırpılma riski)"
+  grep -q 'bgFill'                   "$d/branding/macnix/welcome.qml"   || { warn "welcome.qml: opak zemin yok"; err=1; }
+  grep -q 'bgFill'                   "$d/branding/macnix/finishedq.qml" || { warn "finishedq.qml: opak zemin yok"; err=1; }
+  [[ -f "$d/branding/macnix/notes.qml" ]] || { warn "notes.qml marka dizininde yok"; err=1; }
+  (( err == 0 )) && ok "Calamares yapılandırması son hâli yazıldı ve doğrulandı"
 }
 
 # ── Son rötuş: LightDM otomatik giriş ──────────────────────────────────────
