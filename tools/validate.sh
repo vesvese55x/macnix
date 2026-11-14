@@ -44,7 +44,11 @@ while IFS= read -r f; do
   else
     fail "$f — $(tail -2 /tmp/mx-err | head -1)"
   fi
-done < <(find . -type f -name '*.py' -not -path '*__pycache__*' | sort)
+done < <(find . -type f -name '*.py' -not -path '*__pycache__*' \
+           -not -path './calamares/module-conf/*' | sort)
+# NOT: calamares/module-conf/*.py dosyaları Python DEĞİL — Calamares'in
+# welcomeq/finishedq modülleri yapılandırmasını .py adıyla arar, içerik YAML'dır.
+# Bunlar aşağıdaki YAML bölümünde denetlenir.
 find . -name '__pycache__' -type d -exec rm -rf {} + 2>/dev/null || true
 
 # ── 3. YAML: Calamares yapılandırmaları ────────────────────────────────────
@@ -58,7 +62,9 @@ except ImportError:
     sys.exit(0)
 bad = 0
 files = sorted(glob.glob("calamares/**/*.conf", recursive=True) +
-               glob.glob("calamares/**/*.desc", recursive=True))
+               glob.glob("calamares/**/*.desc", recursive=True) +
+               # .py adlı Calamares yapılandırmaları (welcomeq / finishedq)
+               glob.glob("calamares/module-conf/*.py"))
 for f in files:
     try:
         list(yaml.safe_load_all(open(f)))
@@ -103,10 +109,21 @@ for mod_dir in sorted(glob.glob("calamares/modules/*")):
         problems.append(f"{name}: settings.conf'ta hiç kullanılmıyor")
 
 # Kullanılan her modülün yapılandırması var mı?
+#
+# İSTİSNA: welcomeq.py / finishedq.py / notesqml.py dosyaları .conf DEĞİL .py
+# adıyla yüklenir (Calamares'te bu modüllerin yapılandırma adı böyle). Aşağıda
+# hem <mod>.conf hem <mod>.py aranıyor.
+CONF_SUFFIXES = (".conf", ".py")
+ALIASES = {  # settings.conf'taki ad -> module-conf altındaki dosya adı
+    "welcomeq": "welcomeq.py",
+    "finishedq": "finishedq.py",
+    "notesqml": "notesqml.py",
+}
 used = set(re.findall(r"^\s{6,}-\s*([a-z][a-z0-9_-]+)\s*$", body, re.M))
 for mod in sorted(used):
-    conf = f"calamares/module-conf/{mod}.conf"
-    if not os.path.exists(conf):
+    names = [ALIASES.get(mod, mod + s) for s in CONF_SUFFIXES]
+    names.append(ALIASES.get(mod, ""))
+    if not any(n and os.path.exists(f"calamares/module-conf/{n}") for n in names):
         problems.append(f"{mod}: module-conf/{mod}.conf yok (Calamares modülü atar)")
 
 # unpackfs gerçekten var mı? (orijinal hatanın kaynağı)
@@ -123,6 +140,34 @@ if brand:
         problems.append(f"{bdir}/branding.desc yok")
     if not os.path.exists(os.path.join(bdir, "show.qml")):
         problems.append(f"{bdir}/show.qml yok")
+
+    # Slayt destesi: show.qml içinde geçen HER görsel marka dizininde olmalı.
+    # (Canlı testte olduğu gibi eksik görsel → slayt BOŞ beyaz kalır.)
+    show = open(os.path.join(bdir, "show.qml"), encoding="utf-8").read()
+    imgs = set(re.findall(r'source:\s*"([^"$]+?\.(?:png|jpg|svg))"', show))
+    for im in sorted(imgs):
+        if not os.path.exists(os.path.join(bdir, im)):
+            problems.append(f"{bdir}/{im} yok (show.qml referansı — slayt boş kalır)")
+
+    # QML ekranları: sidebar/navigation/finishedq/welcome
+    for qml in ("calamares-sidebar.qml", "calamares-navigation.qml"):
+        if not os.path.exists(os.path.join(bdir, qml)):
+            problems.append(f"{bdir}/{qml} yok")
+    # navigation.qml "Bitir" düğmesini çizmeli (sonda kurulum kapanabilsin)
+    nav_p = os.path.join(bdir, "calamares-navigation.qml")
+    if os.path.exists(nav_p):
+        nav = open(nav_p, encoding="utf-8").read()
+        if "quitVisible" not in nav or "ViewManager.quit()" not in nav:
+            problems.append(f"{nav_p}: Bitir (quit) düğmesi yok — kurulum kapatılamaz")
+
+    # finishedq / welcomeq kendi QML'lerini marka dizininden yükler
+    for qml in ("finishedq.qml", "welcome.qml"):
+        if not os.path.exists(os.path.join(bdir, qml)):
+            problems.append(f"{bdir}/{qml} yok")
+        else:
+            txt = open(os.path.join(bdir, qml), encoding="utf-8").read()
+            if "BELGESELSEMO" not in txt:
+                problems.append(f"{bdir}/{qml}: kredi şeridi (BELGESELSEMO) yok")
 
 if problems:
     for p in problems:
@@ -143,6 +188,16 @@ for f in VERSION build.sh packages/01-core.list.chroot \
          scripts/bin/macnix-tui scripts/bin/macnix-log \
          overlay/etc/xdg/openbox/autostart overlay/etc/lightdm/lightdm.conf.d/50-macnix.conf \
          calamares/branding/macnix/macnix_logo.png \
+         calamares/branding/macnix/show.qml \
+         calamares/branding/macnix/welcome.qml \
+         calamares/branding/macnix/finishedq.qml \
+         calamares/branding/macnix/calamares-sidebar.qml \
+         calamares/branding/macnix/calamares-navigation.qml \
+         calamares/branding/macnix/slide-hardware.png \
+         calamares/branding/macnix/slide-vm.png \
+         tools/assets/gen-slide-art.py \
+         overlay/usr/share/fonts/truetype/inter/Inter-Regular.ttf \
+         overlay/usr/share/fonts/truetype/inter/Inter-Bold.ttf \
          systemd/macnix-live.service systemd/macnix-firstboot.service \
          systemd/macnix-vm.service systemd/macnix-console.service; do
   [[ -f "$f" ]] && pass "$f" || fail "$f YOK"
