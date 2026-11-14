@@ -602,12 +602,10 @@ def config_tests():
     check("show.qml en az 5 slayt içeriyor", show.count("Slide {") >= 5,
           f"bulunan: {show.count('Slide {')}")
 
-    # 6) Görsel üretici tekrar üretilebilir mi? (PIL varsa)
-    try:
-        from PIL import Image  # noqa: F401
-        check("gen-slide-art.py: PIL mevcut (görseller yeniden üretilebilir)", True)
-    except ImportError:
-        check("gen-slide-art.py: PIL mevcut", False, "Pillow kurulu değil (CI'da atlanır)")
+    # 6) Görseller repoda mı? (üretici betik yalnızca yerelde gerekir; CI'da
+    #    Pillow kurulu değil ve zaten PNG'ler depoda duruyor → bu bir HATA değil.)
+    slides = [f for f in os.listdir(brand) if f.startswith("slide-") and f.endswith(".png")]
+    check(f"slayt görselleri repoda ({len(slides)} adet)", len(slides) >= 6, str(slides))
 
     # 7) Font: Inter diskte (Qt QML font.family: "Inter")
     fonts = os.path.join(ROOT, "overlay/usr/share/fonts/truetype/inter")
