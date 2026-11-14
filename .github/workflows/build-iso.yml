@@ -45,6 +45,15 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
+      # ÖNEMLİ: GitHub Contents API ile yüklenen dosyalar 644 gelir (exec biti
+      # korunmaz). Ayrıca bazı zip indirmeleri de izinleri düşürür. Bu yüzden
+      # betikleri burada açıkça çalıştırılabilir yapıyoruz.
+      - name: Betik izinleri
+        run: |
+          chmod +x build.sh tools/*.sh tools/*.py scripts/*.sh scripts/bin/* \
+                   calamares/modules/*/main.py plymouth/macnix/*.py 2>/dev/null || true
+          ls -l build.sh | awk '{print $1, $NF}'
+
       - name: Derleme bağımlılıkları
         run: |
           sudo apt-get update -qq
