@@ -258,8 +258,14 @@ def test_configs():
     # NOT: exec listesinde bazı adımlar {"id","module","config"} sözlüğü olarak
     # yazılır (aynı modülü farklı yapılandırmayla ikinci kez kullanmak için).
     # Bu durumda .conf adı id değil, config alanıdır.
+    # NOT: yerel Python job modülleri (gpu-detect, gpu-config, efi-fallback)
+    # .conf gerektirmez — yapılandırmaları yoktur.
+    local_jobs = {m for m in os.listdir(os.path.join(ROOT, "calamares", "modules"))
+                  if os.path.isfile(os.path.join(ROOT, "calamares", "modules", m, "module.desc"))}
     missing = []
     for mod in flat:
+        if mod in local_jobs:
+            continue
         if isinstance(mod, dict):
             conf_name = mod.get("config")
             mod_id = mod.get("id", mod.get("module", "?"))
@@ -390,19 +396,27 @@ def test_debian_compat():
     # ── UEFI yedek önyükleyici (\EFI\BOOT\BOOTX64.EFI) ───────────────────
     # Debian Calamares'te bootloader.conf:installEFIFallback YOK SAYILIYOR;
     # VM testinde NVRAM girdisi olmayan UEFI doğrudan kabuğa düşüyordu.
-    fb_conf = os.path.join(ROOT, "calamares/module-conf/macnix-efi-fallback.conf")
-    check("EFI yedek adımı yapılandırması var", os.path.isfile(fb_conf))
-    if os.path.isfile(fb_conf):
-        fbc = open(fb_conf).read()
+    fb_main = os.path.join(ROOT, "calamares/modules/macnix-efi-fallback/main.py")
+    fb_desc = os.path.join(ROOT, "calamares/modules/macnix-efi-fallback/module.desc")
+    check("EFI yedeği yerel Python job modülü", os.path.isfile(fb_main) and os.path.isfile(fb_desc))
+    if os.path.isfile(fb_main):
+        fbc = open(fb_main).read()
         check("EFI yedeği BOOTX64.EFI yazıyor", "BOOTX64.EFI" in fbc)
         check("EFI yedeği BOOTIA32.EFI (32-bit UEFI) da destekliyor", "BOOTIA32.EFI" in fbc)
-        check("EFI yedeği yoksa kurulumu durdurmuyor", "exit 0" in fbc)
-        check("EFI yedeği hedef sistemde (chroot) çalışıyor", "dontChroot: false" in fbc)
+        check("EFI yedeği BIOS'ta sessizce atlıyor", "BIOS kurulumu olabilir" in fbc)
+        check("EFI yedeği yazılamazsa kurulumu düşürmüyor",
+              "kurulum sürüyor" in fbc)
+        check("EFI yedeği hedef kökü chroot'a göre çözüyor", "_resolve_root" in fbc)
+    if os.path.isfile(fb_desc):
+        import yaml as _y
+        _d = _y.safe_load(open(fb_desc))
+        check("EFI yedeği modülü job+python arayüzünde",
+              _d.get("type") == "job" and _d.get("interface") == "python", str(_d))
     st = open(os.path.join(ROOT, "calamares/settings.conf")).read()
     st_clean = "\n".join(l for l in st.splitlines() if not l.strip().startswith("#"))
     check("EFI yedek adımı exec listesinde", "- macnix-efi-fallback" in st_clean)
-    check("EFI yedeği 'instances:' ile tanımlı (3.2 sözlük kabul etmez)",
-          "instances:" in st_clean and "config: macnix-efi-fallback.conf" in st_clean)
+    check("EFI yedeği için shellprocess örneği KULLANILMIYOR (canlı testte yüklenmedi)",
+          "config: macnix-efi-fallback.conf" not in st_clean)
     # Calamares 3.2: sequence öğeleri SÖZLÜK olamaz → "invalid settings".
     try:
         _st = yaml.safe_load(st_clean)
