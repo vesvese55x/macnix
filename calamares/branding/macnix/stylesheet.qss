@@ -53,22 +53,28 @@ QLabel { background: transparent; color: #FFFFFF; }
 QLabel[description="true"] { color: #8E8E93; }
 
 /* === LISTS === */
-QListView, QTreeView {
+/* NOT (2026-11-14): "QListView, QTreeView" seçicisi Calamares'in yan menüsünü
+ * de (ProgressTreeView → #sidebarApp) boyuyordu. Yan menüye kutu/çerçeve
+ * çizdiriyor, menü öğelerini görünmez yapıyordu (yerel 3.3.14 ekran
+ * görüntüsünde birebir: boş siyah dikdörtgen). Artık yalnızca İÇERİK
+ * listeleri stilleniyor; yan menü tamamen branding.desc'teki
+ * sidebarBackground/sidebarText renklerine bırakıldı. */
+#viewpane QListView, #viewpane QTreeView {
     background-color: #1C1C1E;
     border: 1px solid #2C2C2E;
     border-radius: 10px;
     padding: 4px;
     outline: none;
 }
-QListView::item {
+#viewpane QListView::item {
     padding: 12px 16px;
     border-radius: 8px;
     color: #FFFFFF;
 }
-QListView::item:selected {
+#viewpane QListView::item:selected {
     background-color: #0A84FF;
 }
-QListView::item:hover:!selected {
+#viewpane QListView::item:hover:!selected {
     background-color: #2C2C2E;
 }
 
@@ -149,41 +155,10 @@ QToolTip {
     padding: 8px;
 }
 
-/* ============================================================================
- *  QML YAN MENÜ (sidebar: qml) — yerleşik C++ menüsü yerine geçtiğinde
- *  ---------------------------------------------------------------------------
- *  Gerçek Calamares çalıştırmasında yerleşik menü koyu zeminde okunaksız
- *  kalıyordu (metin seçili değilken neredeyse görünmüyordu). QML yan menü
- *  kırpılma yaptığı için varsayılan (C++) menü kullanılıyor; rengini burada
- *  QSS ile düzeltiyoruz.
- * ========================================================================== */
-#sidebarApp, #sidebarApp QWidget {
-    background-color: #0B0C10;
-    border: none;
-}
-#sidebarApp QListView {
-    background-color: #0B0C10;
-    border: none;
-    outline: none;
-}
-#sidebarApp QListView::item {
-    color: #B9B9C2;
-    padding: 8px 14px;
-    border-radius: 8px;
-}
-#sidebarApp QListView::item:hover {
-    background-color: #1C1C1E;
-    color: #FFFFFF;
-}
-#sidebarApp QListView::item:selected {
-    background-color: #1C1C1E;
-    color: #FFFFFF;
-    font-weight: 600;
-}
-#sidebarApp QLabel {
-    color: #8E8E93;
-    background: transparent;
-}
-#mainApp, #viewpane, #viewManager, #viewManagerStack {
-    background-color: #08090D;
-}
+/* NOT (2026-11-14): yan menü (#sidebarApp) için QSS kuralları DENENDİ ve
+ * KALDIRILDI. Calamares'in ProgressTreeView'i için ::item kuralları listeyi
+ * boş/siyah bir dikdörtgen olarak çizdirdi (yerel 3.3.14 çalıştırmasında
+ * ekran görüntüsüyle doğrulandı). Yan menü renkleri artık branding.desc
+ * içindeki KÜÇÜK HARFLİ style anahtarlarıyla veriliyor
+ * (sidebarBackground / sidebarText / sidebarTextSelect / sidebarTextHighlight).
+ */
