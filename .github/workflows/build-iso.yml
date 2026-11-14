@@ -12,6 +12,10 @@ on:
         description: 'OpenCore + kextleri ISO içine göm'
         type: boolean
         default: true
+      prune_releases:
+        description: 'Yayından önce eski sürümleri (release + tag) sil'
+        type: boolean
+        default: true
 
 permissions:
   contents: write
@@ -48,6 +52,7 @@ jobs:
     outputs:
       sha256: ${{ steps.hash.outputs.sha256 }}
       iso: ${{ steps.hash.outputs.iso }}
+      size_mb: ${{ steps.hash.outputs.size_mb }}
     steps:
       - uses: actions/checkout@v4
 
@@ -86,6 +91,7 @@ jobs:
           ISO=$(ls out/*.iso | head -1)
           echo "iso=$(basename "$ISO")" >> "$GITHUB_OUTPUT"
           echo "sha256=$(sha256sum "$ISO" | cut -d' ' -f1)" >> "$GITHUB_OUTPUT"
+          echo "size_mb=$(( $(stat -c%s "$ISO") / 1048576 ))" >> "$GITHUB_OUTPUT"
           echo "### MacNix ISO" >> "$GITHUB_STEP_SUMMARY"
           echo '```' >> "$GITHUB_STEP_SUMMARY"
           echo "$(basename "$ISO")  $(du -h "$ISO" | cut -f1)" >> "$GITHUB_STEP_SUMMARY"
@@ -131,34 +137,71 @@ jobs:
         id: ver
         run: echo "v=$(cat VERSION)" >> "$GITHUB_OUTPUT"
 
+      - name: Eski sürümleri temizle (yalnızca son sürüm kalsın)
+        if: github.event.inputs.prune_releases != 'false'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+          # Yalnızca bu depodaki release'ler; en yenisi KORUNMAZ (aşağıda
+          # yeniden yayınlanacak). Hatalar derlemeyi düşürmesin.
+          gh release list --limit 200 --json tagName,createdAt \
+            --jq '.[].tagName' | while read -r tag; do
+              [[ -z "$tag" ]] && continue
+              echo "siliniyor: $tag"
+              gh release delete "$tag" --yes --cleanup-tag || true
+            done || true
+          # Etiketsiz kalmış eski sürüm etiketleri
+          gh api --paginate "repos/${{ github.repository }}/git/refs/tags" \
+            --jq '.[].ref' 2>/dev/null | sed 's|refs/tags/||' | while read -r tag; do
+              [[ -z "$tag" ]] && continue
+              gh api -X DELETE "repos/${{ github.repository }}/git/refs/tags/$tag" || true
+            done || true
+
       - name: Yayınla
         uses: softprops/action-gh-release@v2
         with:
           tag_name: v${{ steps.ver.outputs.v }}-${{ github.run_number }}
           name: MacNix ${{ steps.ver.outputs.v }} (build ${{ github.run_number }})
           body: |
-            ## MacNix ${{ steps.ver.outputs.v }}
+            ## MacNix ${{ steps.ver.outputs.v }} — Gelişmiş macOS Sanallaştırma Distrosu
 
-            macOS'u Linux üzerinde bir sanal makinede çalıştıran kurulum sistemi.
+            macOS'u Linux üzerinde bir QEMU/KVM sanal makinesinde çalıştıran kurulum sistemi.
 
-            **ISO:** `${{ needs.build.outputs.iso }}`
+            **ISO:** `${{ needs.build.outputs.iso }}` (${{ needs.build.outputs.size_mb }} MB)
             **SHA256:** `${{ needs.build.outputs.sha256 }}`
 
-            ### Doğrulanmış
-            - BIOS + UEFI hibrit önyükleme
-            - Calamares kurulumu: bölümleme, unpackfs, kullanıcı, GRUB (EFI **ve** BIOS)
-            - UEFI yedek önyükleyici `\EFI\BOOT\BOOTX64.EFI` (boş NVRAM'de de açılır)
-            - Kurulu sistem BIOS'tan ve UEFI'den açılıyor
+            > BELGESELSEMO tarafından [ARENA.AI](https://arena.ai) sayesinde geliştirildi ·
+            > [github.com/local-over/macnix](https://github.com/local-over/macnix) orijinal
+            > deposundan fork edilerek · [belgeselsemo.com.tr](https://belgeselsemo.com.tr)
 
-            ### Henüz test edilmedi
+            ### Bu sürümde yeni
+            - Kurulumda **hiçbir yerde kullanıcı adı/parola sorulmaz**: otomatik oturum
+              açma (lightdm autologin) + boş parola + ilk açılışta `passwd -d`
+            - Kurulum ilerleme ekranında **tanıtım slaytları** (görsel + açıklama) —
+              önceki sürümde bu alan tamamen boş/beyazdı
+            - **Çalışan "Bitir" düğmesi**: bitiş ekranı artık `finishedq` + kendi QML'i;
+              30 saniyelik geri sayımdan sonra kendini kapatıp yeniden başlatır
+            - Karşılama ekranı yenilendi (logo/metin çakışması giderildi, fork kredisi)
+            - Kurulumda `useradd: user 'macnix' already exists` hatası giderildi
+              (canlı hesap `macnix-live`, `removeuser` + ilk açılış temizliği)
+            - `sudo: a password is required` hatası giderildi (sudoers `99-` sırası)
+            - `mount` Boost.Python hatası giderildi (mount modülü yaması)
+
+            ### Test edilen
+            - Canlı önyükleme (BIOS + UEFI hibrit), Calamares sihirbazı, `unpackfs`
+              4.3 GB / 57.627 dosya ile %100
+            - ISO içeriği her derlemeden sonra `7z` ile doğrulanıyor
+
+            ### Henüz test edilmemiş (dürüstçe)
+            - Kurulum sonu → yeniden başlatma → ilk açılış zinciri (bu derlemede
+              otomatik doğrulanamıyor; sihirbaz otomasyonu VNC/QMP sınırlarına takılıyor)
             - macOS'un gerçekten kurulup açılması
-            - VFIO GPU passthrough (uyumlu AMD kart gerekir)
-            - Gerçek donanımda kurulum
+            - VFIO GPU passthrough (Apple sürücüsü olan AMD kart gerekir)
 
-            GPU hızlandırma yalnızca Apple sürücüsü olan AMD kartlarda
-            (RX 580 / 6600+) mümkündür. Diğer tüm GPU'larda macOS yazılım
-            render ile açılır — bu bir hata değil, Apple'ın sürücü modelinin
-            sonucudur.
+            GPU hızlandırma yalnızca Apple sürücüsü olan AMD kartlarda (RX 580 / 6600+)
+            mümkündür. Diğer GPU'larda macOS yazılım render ile açılır — bu bir hata
+            değil, Apple'ın sürücü modelinin sonucudur.
 
             Bütünlük: `sha256sum -c macnix-2.0.0-amd64.iso.sha256`
           files: |
@@ -166,8 +209,5 @@ jobs:
             out/*.sha256
           draft: false
           prerelease: false
-      # NOT: `env` blokları adım (step) düzeyinde olmalı; `with:` içine
-      # yazılırsa GitHub'ın şema doğrulayıcısı reddeder:
-      #   "failed to parse workflow: A mapping was not expected"
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
