@@ -2,6 +2,12 @@
 # Canlı ortamda: masaüstü arka planı + kurulum sihirbazı
 # Kurulu sistemde: MacNix kontrol paneli
 
+# Calamares arayüz dili: oturum ortamı /etc/default/locale'i her zaman
+# taşımıyor; canlı VM'de arayüz İngilizce açıldı (ekran görüntüsüyle
+# doğrulandı). Burada açıkça Türkçe veriyoruz.
+export LANG=tr_TR.UTF-8
+export LANGUAGE=tr_TR:tr
+
 xsetroot -solid "#101014"
 xset s off -dpms 2>/dev/null || true
 nm-applet --sm-disable >/dev/null 2>&1 &
