@@ -49,10 +49,13 @@ windowPlacement:         center
 # (calamares-sidebar.qml / calamares-navigation.qml repoda duruyor.)
 
 style:
-    SidebarBackground:        "#0B0C10"
-    SidebarText:              "#8E8E93"
-    # NOT: "SidebarTextSelect" ve "SidebarTextHighlight" Calamares 3.3'te
-    # geçerli style anahtarı DEĞİL (3.3.14 canlı çalıştırmada uyarı verdi:
-    # "Unknown branding *style* entry"). Kaldırıldı — seçili adımın vurgusu
-    # calamares-sidebar.qml içinde doğrudan renklendiriliyor.
-    SidebarBackgroundCurrent: "#1C1C1E"
+    # DİKKAT: anahtarlar KÜÇÜK HARFLE yazılmalı. Calamares 3.2.61 kaynağı
+    # (Branding::s_styleEntryStrings / CalamaresWindow.cpp) renkleri
+    # "sidebarBackground", "sidebarText", "sidebarTextSelect",
+    # "sidebarTextHighlight" adlarıyla arar. "SidebarBackground" yazıldığında
+    # değer BULUNAMIYOR, palet rengi boş kalıyor ve yan menü metni koyu
+    # zeminde SİYAH oluyordu (canlı VM ekran görüntüsünde birebir görüldü).
+    sidebarBackground:        "#0B0C10"
+    sidebarText:              "#B9B9C2"
+    sidebarTextSelect:        "#FFFFFF"
+    sidebarTextHighlight:     "#1C1C1E"
