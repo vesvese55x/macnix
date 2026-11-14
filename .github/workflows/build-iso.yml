@@ -1,128 +1,107 @@
-name: Build and Release MacNix ISO
+name: MacNix 2.0 — ISO
 
 on:
   push:
-    branches: [ master, main ]
+    branches: [main, master]
+    paths-ignore: ['**.md']
   pull_request:
-    branches: [ master, main ]
+    branches: [main, master]
   workflow_dispatch:
+    inputs:
+      bundle_assets:
+        description: 'OpenCore + kextleri ISO içine göm'
+        type: boolean
+        default: true
 
 permissions:
-  contents: write  # GitHub Releases ve Git Tag işlemlerini yapabilmek için gerekli yazma izni
+  contents: write
 
 jobs:
-  build:
+  validate:
+    name: Statik doğrulama + modül testleri
     runs-on: ubuntu-latest
     steps:
-      - name: Checkout repository
-        uses: actions/checkout@v4
+      - uses: actions/checkout@v4
 
-      - name: Install dependencies
+      - name: Python ve YAML bağımlılıkları
         run: |
-          sudo apt-get update
-          sudo apt-get install -y live-build debootstrap xorriso squashfs-tools \
-          grub-efi-amd64-bin grub-pc-bin mtools dosfstools isolinux \
-          syslinux-common syslinux-utils
+          python3 -m pip install --quiet pyyaml
 
-      - name: Build ISO
+      - name: Statik doğrulama (62 denetim)
+        run: bash tools/validate.sh
+
+      - name: Calamares modül testleri (sahte libcalamares)
+        run: python3 tools/test-modules.py
+
+  build:
+    name: ISO derle
+    needs: validate
+    runs-on: ubuntu-latest
+    timeout-minutes: 90
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Derleme bağımlılıkları
         run: |
-          # 1. GERÇEK DONANIMDA SİYAH EKRAN HATASININ ÇÖZÜMÜ:
-          # Gerçek ekran kartlarında (Nvidia/AMD/Intel) Xorg'un kilitlenip siyah ekranda kalmasına sebep olan
-          # 10-modesetting.conf oluşturma bloğunu phase7-build-iso.sh içinden tamamen temizliyoruz.
-          sed -i '/10-modesetting.conf/,/EOF/d' scripts/phase7-build-iso.sh || true
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq \
+            debootstrap squashfs-tools xorriso \
+            grub-efi-amd64-bin grub-pc-bin mtools dosfstools \
+            isolinux syslinux-common syslinux-utils zstd xz-utils
 
-          # 2. Calamares "unpackfs" hatasını önleyen yamayı doğrudan phase7-build-iso.sh script'ine entegre ediyoruz.
-          # Böylece lb clean aşamasında bu yama asla silinmez.
-          sed -i 's|# Calamares settings|# Calamares settings\nmkdir -p "${CHROOT_BASE}/etc/calamares/modules"\necho -e "---\\nunpack:\\n    - source: \\"/run/live/medium/live/filesystem.squashfs\\"\\n      sourcefs: \\"squashfs\\"\\n      destination: \\"\\"\\n      imageType: \\"squashfs\\"" > "${CHROOT_BASE}/etc/calamares/modules/unpackfs.conf"|g' scripts/phase7-build-iso.sh || true
-          
-          # 3. CHROOT İÇİ SAVUNMA: syslinux-utils kurulduktan sonra isohybrid'i chroot içinde kalıcı olarak maskele.
-          sed -i 's|chmod 440 /etc/sudoers.d/macnix-live|chmod 440 /etc/sudoers.d/macnix-live\nln -sf /bin/true /usr/bin/isohybrid|g' scripts/phase7-build-iso.sh || true
-
-          # 4. VENTOY / BOOT DOSYA BULUNAMADI HATASININ ÇÖZÜMÜ (Kusursuz Klasör Köprüsü):
-          # live-build v3 ve v4+ sürümleri arasındaki dizin uyumsuzluklarını köprü kurarak çözüyoruz.
-          # Kancalarımızı (hooks) hem düz config/hooks/ klasörüne hem de v3 yerel klasörlerine kopyalıyoruz.
-          sed -i 's|lb build|cp -f config/hooks/live/* config/hooks/ 2>/dev/null \|\| true \&\& cp -f config/hooks/normal/* config/hooks/ 2>/dev/null \|\| true \&\& mkdir -p config/chroot_local-hooks config/binary_local-hooks config/chroot_local-includes config/binary_local-includes config/chroot_local-packageslists \&\& cp -r config/hooks/live/* config/chroot_local-hooks/ 2>/dev/null \|\| true \&\& cp -r config/hooks/normal/* config/binary_local-hooks/ 2>/dev/null \|\| true \&\& cp -r config/includes.chroot/* config/chroot_local-includes/ 2>/dev/null \|\| true \&\& cp -r config/includes.binary/* config/binary_local-includes/ 2>/dev/null \|\| true \&\& cp -r config/package-lists/* config/chroot_local-packageslists/ 2>/dev/null \|\| true \&\& chmod +x config/hooks/* config/chroot_local-hooks/* config/binary_local-hooks/* 2>/dev/null \|\| true \&\& lb build|g' scripts/phase7-build-iso.sh || true
-
-          # 5. KESİN ÇÖZÜM (Gecikmeli Yeniden Adlandırma Bypassı):
-          # live-build v3'ün paketleme bittikten sonra kancaları çalıştırma hatasını aşmak için,
-          # yeniden adlandırma komutunu paketleyici binary_iso script'inin en başına (2. satıra) gömüyoruz.
-          # Böylece ISO paketlenmeden hemen önce çekirdekler kesinlikle 'vmlinuz' ve 'initrd.img' adını alır.
-          sudo sed -i '2i\
-          if [ -d binary/live ]; then\
-              cd binary/live\
-              for f in vmlinuz-*; do [ -e "$f" ] \&\& mv "$f" vmlinuz; done\
-              for f in initrd.img-*; do [ -e "$f" ] \&\& mv "$f" initrd.img; done\
-          fi' /usr/lib/live/build/binary_iso || true
-
-          # 6. Host (GitHub Runner) düzeyindeki isohybrid çalıştırma satırlarını etkisizleştiriyoruz.
-          sudo find /usr/lib/live/build/ /usr/share/live/build/ -type f -exec sed -i '/Check_package/!{s|^isohybrid\b|echo isohybrid_skipped|g; s|\([^-]\)\bisohybrid\b|\1echo isohybrid_skipped|g}' {} + 2>/dev/null || true
-          
-          # 7. Host üzerinde de ek güvenlik olarak isohybrid maskeliyoruz
-          sudo ln -sf /bin/true /usr/bin/isohybrid || true
-          sudo ln -sf /bin/true /bin/isohybrid || true
-          
-          # Derlemeyi başlat
-          sudo bash scripts/phase7-build-iso.sh
-
-      - name: Rename ISO to include -belgeselsemo
-        # Derlenen ISO dosyasını bulup ismine -belgeselsemo ekini ekler.
+      # ÖNEMLİ: burada HİÇBİR `sed` yaması yok.
+      # Orijinal iş akışı live-build'i 7 adet sed ile yamalıyordu ve hepsi
+      # `|| true` ile yutuluyordu; sonuç sessizce bozuk ISO'ydu.
+      # MacNix 2.0 live-build kullanmıyor.
+      - name: ISO derle
+        env:
+          BUNDLE_ASSETS: ${{ github.event.inputs.bundle_assets || '1' }}
+          MACNIX_JOBS: 4
         run: |
-          sudo chown -R $USER:$USER build/output/
-          cd build/output
-          ISO_FILE=$(ls *.iso | head -n 1)
-          if [ -n "$ISO_FILE" ]; then
-            BASE_NAME="${ISO_FILE%.*}"
-            NEW_NAME="${BASE_NAME}-belgeselsemo.iso"
-            mv "$ISO_FILE" "$NEW_NAME"
-            echo "Renamed: $ISO_FILE -> $NEW_NAME"
-          else
-            echo "No ISO file found!"
-            exit 1
-          fi
+          sudo -E WORK="$RUNNER_TEMP/build" OUT="$PWD/out" USB_TREE=1 \
+            ./build.sh
 
-      - name: Upload ISO artifact
+      - name: ISO yapısını doğrula
+        run: |
+          ISO=$(ls out/*.iso)
+          echo "ISO: $ISO ($(du -h "$ISO" | cut -f1))"
+          # hibrit önyükleme: hem BIOS hem UEFI El Torito girdisi olmalı
+          xorriso -indev "$ISO" -report_el_torito plain 2>/dev/null \
+            | grep -E 'El Torito img path' | tee /tmp/et.txt
+          grep -q 'bios.img' /tmp/et.txt || { echo "::warning::BIOS önyükleme yok"; }
+          grep -q 'efi.img'  /tmp/et.txt || { echo "::error::UEFI önyükleme yok"; exit 1; }
+          # canlı sistem dosyaları
+          xorriso -indev "$ISO" -ls /live 2>/dev/null | grep -q filesystem.squashfs \
+            || { echo "::error::filesystem.squashfs yok"; exit 1; }
+
+      - name: Artefakt yükle
         uses: actions/upload-artifact@v4
         with:
-          name: macnix-iso-belgeselsemo
-          path: build/output/*-belgeselsemo.iso
+          name: macnix-iso
+          path: |
+            out/*.iso
+            out/*.sha256
+          retention-days: 14
 
-      - name: Delete old release and tag
-        # Çakışmayı önlemek için eski "latest-belgeselsemo" sürümünü ve etiketini tamamen siler.
-        if: github.event_name == 'push' && (github.ref == 'refs/heads/master' || github.ref == 'refs/heads/main') || github.event_name == 'workflow_dispatch'
-        run: |
-          git config --global user.name "github-actions[bot]"
-          git config --global user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          
-          # Varsa eski GitHub Release sürümünü sil
-          gh release delete "latest-belgeselsemo" --yes || true
-          
-          # Varsa remote üzerindeki tag'i sil
-          git push origin :refs/tags/latest-belgeselsemo || true
-          
-          # Varsa local üzerindeki tag'i temizle
-          git tag -d latest-belgeselsemo || true
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-
-      - name: Create Release and Upload ISO
-        # Yeni ve temiz "latest-belgeselsemo" sürümünü oluşturup ISO'yu yükler
-        if: github.event_name == 'push' && (github.ref == 'refs/heads/master' || github.ref == 'refs/heads/main') || github.event_name == 'workflow_dispatch'
+      - name: Release oluştur
+        if: github.event_name != 'pull_request'
         uses: softprops/action-gh-release@v2
         with:
-          tag_name: "latest-belgeselsemo"
-          name: "MacNix OS Latest (belgeselsemo)"
+          tag_name: latest
+          name: MacNix 2.0 (latest)
           body: |
-            MacNix OS ISO dosyası başarıyla derlendi.
-            
-            Bu repo orijinalinde "https://github.com/local-over/macnix"e aittir.. Sadece release iso buildleri oluşturulmuştur.. Repo sahibi "hassan elkady - LocalOver" e saygılarımızla..
-            
-            Bu sürüm her yeni derleme çalıştırıldığında otomatik olarak güncellenir ve eski sürümün yerini alır.
-            
-            ### Dosya Bilgisi:
-            - **Dosya Adı:** `macnix-*-belgeselsemo.iso`
-            - **Kurulum:** Calamares `unpackfs` yapılandırma hatası tamamen çözülmüştür.
+            MacNix 2.0 — macOS sanallaştırma platformu.
+
+            - Hibrit ISO (UEFI + BIOS önyükleme)
+            - Calamares kurulum akışı: `unpackfs` düzeltildi
+            - OpenCore + kextler + AMD yamaları ISO içinde gömülü
+            - GPU'su desteklenmeyen makinelerde yazılım render modu
+
+            `sha256sum` dosyası ile bütünlüğü doğrulayın.
+          files: |
+            out/*.iso
+            out/*.sha256
           draft: false
           prerelease: false
-          files: build/output/*-belgeselsemo.iso
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          env:
+            GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
