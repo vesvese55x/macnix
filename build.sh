@@ -255,8 +255,13 @@ stage_overlay() {
 
   # Python job modülleri (macnix-welcome KALDIRILDI: Debian Calamares'i
   # PythonQt olmadan derlenmiş, "interface: python" + viewmodule desteklenmiyor)
+  # ÖNEMLİ: liste SABİT olmamalı. Yeni bir modül (örn. macnix-efi-fallback)
+  # eklendiğinde burada da elle yazılması gerekiyordu ve unutulduğunda
+  # Calamares "The following modules could not be loaded" diyerek hiç
+  # açılmıyordu (canlı testte birebir yakalandı). Artık dizindeki HER modül
+  # kopyalanıyor.
   local m
-  for m in macnix-gpu-detect macnix-gpu-config; do
+  for m in $(cd "${ROOT}/calamares/modules" && ls -d */ 2>/dev/null | tr -d /); do
     [[ -d "${ROOT}/calamares/modules/$m" ]] || continue
     install -d "$CAL_MOD_DIR/$m"
     install -m 0644 "${ROOT}/calamares/modules/$m/main.py"      "$CAL_MOD_DIR/$m/main.py"
