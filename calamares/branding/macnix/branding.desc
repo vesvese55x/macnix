@@ -1,19 +1,19 @@
+# MacNix 2.0 — Calamares marka tanımı
 ---
 componentName: macnix
 
 strings:
     productName:         "MacNix"
     shortProductName:    "MacNix"
-    version:             2.0.0
-    shortVersion:        2.0
+    version:             2.0
+    shortVersion:        "2.0"
     versionedName:       "MacNix 2.0"
     shortVersionedName:  "MacNix 2.0"
     bootloaderEntryName: "MacNix"
-    productUrl:          "https://github.com/local-over/macnix"
-    supportUrl:          "https://github.com/local-over/macnix/issues"
-    knownIssuesUrl:      "https://github.com/local-over/macnix/issues"
-    releaseNotesUrl:     "https://github.com/local-over/macnix/releases"
-    donateUrl:           "https://github.com/local-over/macnix#donate"
+    productUrl:          "https://github.com/vesvese55x/macnix"
+    supportUrl:          "https://github.com/vesvese55x/macnix/issues"
+    knownIssuesUrl:      "https://github.com/vesvese55x/macnix/issues"
+    releaseNotesUrl:     "https://github.com/vesvese55x/macnix/releases"
 
 images:
     productLogo:         "macnix_logo.png"
@@ -23,16 +23,14 @@ images:
 slideshow:               "show.qml"
 slideshowAPI:            2
 
-# === WINDOW ===
-windowExpanding:         fullscreen
-windowSize:              1024px,768px
+# Pencere: tam ekran yerine sabit boyut — küçük ekranlarda taşma yapmaz
+windowExpanding:         normal
+windowSize:              1000px,700px
 windowPlacement:         center
 
-# === CUSTOM QML UI ===
 sidebar:                 qml
 navigation:              qml
 
-# === COLORS ===
 style:
     SidebarBackground:        "#0B0C10"
     SidebarText:              "#8E8E93"
