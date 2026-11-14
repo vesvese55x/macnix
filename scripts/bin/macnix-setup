@@ -1,0 +1,326 @@
+#!/usr/bin/env python3
+# -*- coding: utf-8 -*-
+"""
+MacNix 2.0 — macnix-setup (grafik kurulum sihirbazı)
+====================================================
+İlk açılışta otomatik açılır. Üç görevi var:
+
+  1. Durumu göstermek ("ne eksik?")
+  2. Tek tuşla macOS kurulum hazırlığını yürütmek
+  3. Yönlendirmek (kurulum bittiğinde "macOS'u başlat")
+
+Ağır işi macnix-install-macos yapar; bu arayüz onu çağırıp ilerlemeyi gösterir.
+Root gerektiren komutlar sudoers kuralıyla şifresiz çalışır
+(/etc/sudoers.d/020-macnix).
+
+Kullanım:
+    macnix-setup --gui       (varsayılan)
+    macnix-setup --cli       (TTY'de metin modu)
+"""
+
+import json
+import os
+import re
+import subprocess
+import sys
+import threading
+
+VARS = os.environ.get("MACNIX_VAR", "/var/lib/macnix")
+SUDO = ["sudo", "-n"]
+
+STEPS = [
+    ("Önyükleme bileşenleri", 1),
+    ("UEFI firmware", 2),
+    ("macOS imajı indirme", 3),
+    ("Disk imajı dönüştürme", 4),
+    ("macOS diski", 5),
+    ("OpenCore yapılandırması", 6),
+    ("Kurulumu başlatma", 7),
+]
+
+
+# ── Durum ────────────────────────────────────────────────────────────────────
+def state() -> dict:
+    out = {}
+    for key, path in (
+        ("assets", f"{VARS}/assets/opencore/OC/OpenCore.efi"),
+        ("opencore", f"{VARS}/firmware/OpenCore/OpenCore.qcow2"),
+        ("ovmf", f"{VARS}/firmware/OVMF_CODE.fd"),
+        ("basesystem", f"{VARS}/disks/BaseSystem.img"),
+        ("disk", f"{VARS}/disks/macOS.qcow2"),
+    ):
+        out[key] = os.path.exists(path)
+    try:
+        with open(f"{VARS}/state.json") as fh:
+            out["state"] = json.load(fh).get("state", "new")
+    except (OSError, json.JSONDecodeError):
+        out["state"] = "new"
+    return out
+
+
+def plan() -> dict:
+    for path in ("/etc/macnix/install-plan.json",):
+        try:
+            with open(path) as fh:
+                return json.load(fh)
+        except (OSError, json.JSONDecodeError):
+            continue
+    return {}
+
+
+def run_step(step_no, on_line, on_done):
+    """macnix-install-macos --step N --json çalıştır, olayları ilet."""
+    cmd = SUDO + ["macnix-install-macos", "--step", str(step_no), "--json"]
+    try:
+        proc = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
+                                text=True, bufsize=1)
+    except FileNotFoundError:
+        on_line(f"HATA: macnix-install-macos bulunamadı")
+        on_done(step_no, False)
+        return
+    for line in proc.stdout:
+        line = line.rstrip("\n")
+        try:
+            ev = json.loads(line)
+        except json.JSONDecodeError:
+            if line.strip():
+                on_line(line)
+            continue
+        if ev.get("event") in ("log", "ok", "warn", "error"):
+            on_line(ev.get("msg", ""))
+        elif ev.get("event") == "progress":
+            on_line(f"{ev.get('value', 0)}% — {ev.get('msg', '')}")
+    proc.wait()
+    on_done(step_no, proc.returncode == 0)
+
+
+# ── CLI (fallback) ──────────────────────────────────────────────────────────
+def cli():
+    print("\033[1mMacNix 2.0 — kurulum hazırlığı\033[0m")
+    st = state()
+    print(f"Durum: {st['state']}")
+    for name, no in STEPS:
+        cmd = SUDO + ["macnix-install-macos", "--step", str(no)]
+        print(f"\n\033[1;36m▶ {no}. {name}\033[0m")
+        rc = subprocess.call(cmd)
+        if rc != 0:
+            print(f"\033[0;31mAdım {no} başarısız (kod {rc})\033[0m")
+            print("Yeniden denemek için: sudo macnix-install-macos --step", no)
+            return rc
+    print("\n\033[0;32mHazırlık tamamlandı.\033[0m Kurulum ekranı açılıyor…")
+    return subprocess.call(SUDO + ["macnix-vm", "install"])
+
+
+# ── GUI ─────────────────────────────────────────────────────────────────────
+def gui():
+    try:
+        import gi
+        gi.require_version("Gtk", "3.0")
+        from gi.repository import Gtk, GLib, Pango
+    except (ImportError, ValueError):
+        print("GTK bulunamadı — metin moduna geçiliyor", file=sys.stderr)
+        return cli()
+
+    p = plan()
+    st = state()
+
+    win = Gtk.Window(title="MacNix 2.0")
+    win.set_default_size(760, 560)
+    win.set_position(Gtk.WindowPosition.CENTER)
+    win.set_border_width(0)
+    win.connect("destroy", Gtk.main_quit)
+
+    outer = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=0)
+    win.add(outer)
+
+    # Başlık
+    head = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=2)
+    head.set_border_width(18)
+    title = Gtk.Label()
+    title.set_markup("<span size='x-large' weight='bold'>MacNix 2.0</span>")
+    title.set_xalign(0)
+    sub = Gtk.Label()
+    mode = p.get("arch", "virtio")
+    subtitle = ("GPU passthrough modu" if mode == "vfio"
+                else "Yazılım render modu — GPU hızlandırma yok")
+    sub.set_markup(f"<span size='small' foreground='#666'>{subtitle} · "
+                   f"{p.get('macos_name', 'macOS')}</span>")
+    sub.set_xalign(0)
+    head.pack_start(title, False, False, 0)
+    head.pack_start(sub, False, False, 0)
+    outer.pack_start(head, False, False, 0)
+
+    # Bilgi kutusu
+    info_txt = Gtk.Label()
+    warn_list = p.get("warnings") or []
+    warn_html = ""
+    if warn_list:
+        warn_html = "\n".join(f"• {w}" for w in warn_list[:4])
+    info_txt.set_markup(
+        f"<span size='small'>VM: {p.get('vm_cores', 2)} çekirdek / "
+        f"{int(p.get('vm_ram_mb', 4096)) // 1024} GB RAM\n"
+        f"{warn_html}</span>")
+    info_txt.set_xalign(0)
+    info_txt.set_line_wrap(True)
+    info_txt.set_margin_start(18)
+    info_txt.set_margin_end(18)
+    outer.pack_start(info_txt, False, False, 8)
+
+    # Adım listesi
+    listbox = Gtk.ListBox()
+    listbox.set_selection_mode(Gtk.SelectionMode.NONE)
+    rows = {}
+    for name, no in STEPS:
+        row = Gtk.ListBoxRow()
+        hb = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=10)
+        hb.set_border_width(6)
+        icon = Gtk.Label(label="○")
+        label = Gtk.Label()
+        label.set_markup(f"<span size='medium'>{no}. {name}</span>")
+        label.set_xalign(0)
+        hb.pack_start(icon, False, False, 6)
+        hb.pack_start(label, True, True, 0)
+        row.add(hb)
+        listbox.add(row)
+        rows[no] = (icon, label)
+    outer.pack_start(listbox, False, False, 0)
+
+    # İlerleme + günlük
+    prog = Gtk.ProgressBar()
+    prog.set_margin_start(18)
+    prog.set_margin_end(18)
+    prog.set_margin_top(10)
+    outer.pack_start(prog, False, False, 0)
+
+    scroll = Gtk.ScrolledWindow()
+    scroll.set_policy(Gtk.PolicyType.AUTOMATIC, Gtk.PolicyType.AUTOMATIC)
+    scroll.set_margin_start(18)
+    scroll.set_margin_end(18)
+    scroll.set_margin_top(6)
+    logview = Gtk.TextView()
+    logview.set_editable(False)
+    logview.set_monospace(True)
+    logview.set_wrap_mode(Gtk.WrapMode.WORD_CHAR)
+    logbuf = logview.get_buffer()
+    scroll.add(logview)
+    outer.pack_start(scroll, True, True, 0)
+
+    # Düğmeler
+    btnbox = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=8)
+    btnbox.set_border_width(14)
+
+    btn_install = Gtk.Button(label="macOS kurulumunu hazırla")
+    btn_boot = Gtk.Button(label="macOS'u başlat")
+    btn_doctor = Gtk.Button(label="Tanılama")
+    btn_console = Gtk.Button(label="Konsol")
+
+    btnbox.pack_end(btn_install, False, False, 0)
+    btnbox.pack_start(btn_console, False, False, 0)
+    btnbox.pack_start(btn_doctor, False, False, 0)
+    btnbox.pack_start(btn_boot, False, False, 0)
+    outer.pack_start(btnbox, False, False, 0)
+
+    def log(msg: str):
+        def _do():
+            end = logbuf.get_end_iter()
+            logbuf.insert(end, msg + "\n")
+            mark = logbuf.create_mark(None, logbuf.get_end_iter(), False)
+            logview.scroll_mark_onscreen(mark)
+        GLib.idle_add(_do)
+
+    def mark(no, symbol, color):
+        def _do():
+            icon, label = rows[no]
+            icon.set_markup(f"<span foreground='{color}' weight='bold'>{symbol}</span>")
+        GLib.idle_add(_do)
+
+    def set_progress(fraction):
+        GLib.idle_add(lambda: prog.set_fraction(fraction) or False)
+
+    running = {"flag": False}
+
+    def worker():
+        running["flag"] = True
+        GLib.idle_add(lambda: btn_install.set_sensitive(False))
+        total = len(STEPS)
+        for idx, (name, no) in enumerate(STEPS, start=1):
+            mark(no, "◐", "#0b5")
+            log(f"\n▶ {no}. {name}")
+            ok_holder = {"ok": False}
+
+            def on_line(msg, no=no):
+                if msg.strip():
+                    log("   " + msg)
+
+            def on_done(no_, ok, idx=idx):
+                ok_holder["ok"] = ok
+                mark(no_, "✔" if ok else "✖", "#1a7f37" if ok else "#c00")
+                set_progress(idx / total)
+
+            run_step(no, on_line, on_done)
+            if not ok_holder["ok"]:
+                log(f"\nAdım {no} başarısız oldu. 'Tanılama' ile ayrıntı görebilirsiniz.")
+                GLib.idle_add(lambda: btn_install.set_sensitive(True))
+                running["flag"] = False
+                return
+        log("\n✔ Hazırlık tamamlandı. Kurulum ekranı açılıyor…")
+        set_progress(1.0)
+        GLib.idle_add(lambda: btn_install.set_sensitive(True))
+        running["flag"] = False
+
+    def on_install(_b):
+        if running["flag"]:
+            return
+        threading.Thread(target=worker, daemon=True).start()
+
+    def on_boot(_b):
+        threading.Thread(
+            target=lambda: subprocess.call(SUDO + ["macnix-vm", "start"]),
+            daemon=True).start()
+        log("macOS başlatılıyor…")
+
+    def on_doctor(_b):
+        proc = subprocess.run(SUDO + ["macnix-doctor"], capture_output=True, text=True)
+        log(proc.stdout or proc.stderr)
+        log(f"(çıkış kodu: {proc.returncode})")
+
+    def on_console(_b):
+        subprocess.Popen(["x-terminal-emulator", "-e", "bash"] if _which("x-terminal-emulator")
+                         else ["xterm", "-e", "bash"])
+
+    btn_install.connect("clicked", on_install)
+    btn_boot.connect("clicked", on_boot)
+    btn_doctor.connect("clicked", on_doctor)
+    btn_console.connect("clicked", on_console)
+
+    # Başlangıç durumu
+    for name, no in STEPS:
+        ready = {
+            1: st["assets"], 2: st["ovmf"], 3: st["basesystem"],
+            4: st["basesystem"], 5: st["disk"], 6: st["opencore"], 7: st["state"] == "installed",
+        }.get(no, False)
+        if st["state"] == "installed":
+            mark(no, "✔", "#1a7f37")
+        elif ready:
+            mark(no, "✔", "#1a7f37")
+        else:
+            mark(no, "○", "#888")
+
+    log("MacNix hazır. 'macOS kurulumunu hazırla' düğmesine basın.")
+    if st["state"] == "installed":
+        log("macOS kurulu görünüyor — doğrudan 'macOS'u başlat' diyebilirsiniz.")
+
+    win.show_all()
+    Gtk.main()
+    return 0
+
+
+def _which(cmd):
+    from shutil import which
+    return which(cmd)
+
+
+if __name__ == "__main__":
+    if "--cli" in sys.argv or not os.environ.get("DISPLAY"):
+        sys.exit(cli())
+    sys.exit(gui())
