@@ -1,0 +1,36 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<openbox_config xmlns="http://openbox.org/3.4/rc">
+  <theme>
+    <name>Clearlooks</name>
+    <titleLayout>NLIMC</titleLayout>
+    <font place="ActiveWindow"><name>sans</name><size>9</size></font>
+    <font place="InactiveWindow"><name>sans</name><size>9</size></font>
+    <font place="MenuHeader"><name>sans</name><size>9</size></font>
+    <font place="MenuItem"><name>sans</name><size>9</size></font>
+  </theme>
+  <desktops><number>1</number></desktops>
+  <resize><drawContents>yes</drawContents></resize>
+  <keyboard>
+    <keybind key="A-Tab"><action name="NextWindow"/></keybind>
+    <keybind key="A-F4"><action name="Close"/></keybind>
+    <!-- Ctrl+Alt+T: terminal (tanılama için) -->
+    <keybind key="C-A-t">
+      <action name="Execute"><command>x-terminal-emulator</command></action>
+    </keybind>
+  </keyboard>
+  <mouse>
+    <dragThreshold>8</dragThreshold>
+  </mouse>
+  <applications>
+    <!-- Calamares tam ekran -->
+    <application name="calamares">
+      <fullscreen>yes</fullscreen>
+      <decor>no</decor>
+      <maximized>yes</maximized>
+    </application>
+    <application name="macnix-setup">
+      <decor>no</decor>
+      <maximized>yes</maximized>
+    </application>
+  </applications>
+</openbox_config>
