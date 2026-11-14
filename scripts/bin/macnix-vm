@@ -1,0 +1,394 @@
+#!/usr/bin/env bash
+# ============================================================================
+#  MacNix 2.0 — VM başlatıcı
+# ============================================================================
+#  Tek giriş noktası: kurulu sistemde macOS VM'ini başlatır.
+#
+#  Kullanım:
+#     macnix-vm start            # normal başlat (installed mode)
+#     macnix-vm install          # kurulum modu (BaseSystem.img takılı)
+#     macnix-vm stop             # nazikçe kapat
+#     macnix-vm status           # durum
+#     macnix-vm console          # VNC/SPICE istemcisini aç
+#     macnix-vm doctor           # tanılama raporu
+#     macnix-vm shell            # üretilen qemu komutunu yazdır (hata ayıklama)
+#
+#  Tasarım notları (orijinal koddan farkları):
+#   - Hugepage rezervasyonu RAM'e göre yapılır, başarısız olursa otomatik
+#     olarak normal bellek yoluna düşer (VM asla "hugepage yok" diye açılmaz).
+#   - CPU pinning gerçek topolojiye göre hesaplanır; tek CCD/tek NUMA
+#     düğümünde L3 paylaşımı korunur (yanlış çekirdek eşleşmesi performansı
+#     yarıya indiriyordu).
+#   - x-vga=on yalnızca gerçek birincil GPU için kullanılır; muxless
+#     laptoplar için otomatik kapatılır (aksi halde qemu açılmaz).
+#   - VNC her modda localhost'ta açılır: single-GPU senaryosunda host
+#     görüntüsüz kaldığında tek kurtarma yolu budur.
+# ============================================================================
+set -Eeuo pipefail
+
+MACNIX_ETC="${MACNIX_ETC:-/etc/macnix}"
+MACNIX_VAR="${MACNIX_VAR:-/var/lib/macnix}"
+QEMU_LOG="${MACNIX_VAR}/logs/qemu.log"
+MONITOR_SOCK="${MACNIX_VAR}/qmp.sock"
+VNC_DISPLAY="${VNC_DISPLAY:-0}"
+PID_FILE="${MACNIX_VAR}/qemu.pid"
+
+C_OK=$'\033[0;32m'; C_WA=$'\033[1;33m'; C_ER=$'\033[0;31m'; C_B=$'\033[1m'; C_R=$'\033[0m'
+say()  { printf '%s[macnix]%s %s\n' "$C_B" "$C_R" "$*"; }
+ok()   { printf '%s  [ ok ]%s %s\n' "$C_OK" "$C_R" "$*"; }
+warn() { printf '%s [warn]%s %s\n' "$C_WA" "$C_R" "$*"; }
+die()  { printf '%s [fail]%s %s\n' "$C_ER" "$C_R" "$*" >&2; exit 1; }
+
+[[ $EUID -eq 0 ]] || die "root gerekli: sudo macnix-vm $*"
+mkdir -p "$MACNIX_VAR/logs" "$MACNIX_VAR/disks"
+
+MODE="installed"
+case "${1:-start}" in
+  start)   MODE="installed" ;;
+  install) MODE="install" ;;
+  stop)    exec_stop=1 ;;
+  status)  exec_status=1 ;;
+  console) exec_console=1 ;;
+  doctor)  exec /usr/local/bin/macnix-doctor ;;
+  shell)   MODE="${2:-installed}"; only_print=1 ;;
+  *)       die "Bilinmeyen komut: $1 (start|install|stop|status|console|doctor|shell)" ;;
+esac
+
+# ── Yapılandırma ─────────────────────────────────────────────────────────────
+[[ -f "$MACNIX_ETC/vm.conf" ]] || die "$MACNIX_ETC/vm.conf yok — kurulum tamamlanmamış"
+# shellcheck disable=SC1091
+source "$MACNIX_ETC/vm.conf"
+
+PLAN_JSON="$MACNIX_ETC/install-plan.json"
+SMBIOS_JSON="$MACNIX_ETC/smbios.json"
+SMBIOS_ETC="$MACNIX_ETC/smbios.json"
+
+jget() { python3 -c "import json,sys;d=json.load(open('$1'));print($2)" 2>/dev/null || echo "$3"; }
+
+ARCH_PROFILE="${ARCH_PROFILE:-virtio}"
+MACOS_VERSION="${MACOS_VERSION:-ventura}"
+VM_CORES="${VM_CORES:-4}"
+VM_RAM_MB="${VM_RAM_MB:-8192}"
+HUGEPAGES="${HUGEPAGES:-0}"
+
+SMBIOS_MODEL="$(jget "$SMBIOS_JSON" "d.get('model','iMacPro1,1')" "iMacPro1,1")"
+SMBIOS_SERIAL="$(jget "$SMBIOS_JSON" "d.get('serial','')" "")"
+SMBIOS_MLB="$(jget "$SMBIOS_JSON" "d.get('mlb','')" "")"
+SMBIOS_UUID="$(jget "$SMBIOS_JSON" "d.get('uuid','')" "")"
+SMBIOS_ROM="$(jget "$SMBIOS_JSON" "d.get('rom','')" "")"
+
+PT_GPUS="$(jget "$PLAN_JSON" "' '.join(d.get('passthrough_gpus') or [])" "")"
+SINGLE_GPU="$(jget "$PLAN_JSON" "str(d.get('single_gpu',False)).lower()" "false")"
+
+DISK="$MACNIX_VAR/disks/macOS.qcow2"
+BASE_IMG="$MACNIX_VAR/disks/BaseSystem.img"
+OC_DIR="$MACNIX_VAR/firmware/OpenCore"
+OC_IMG="$OC_DIR/OpenCore.qcow2"
+OVMF_CODE="$MACNIX_VAR/firmware/OVMF_CODE.fd"
+OVMF_VARS_MASTER="$MACNIX_VAR/firmware/OVMF_VARS.fd"
+OVMF_VARS_RUN="$MACNIX_VAR/firmware/OVMF_VARS.runtime.fd"
+
+# ============================================================================
+#  Alt komutlar
+# ============================================================================
+if [[ "${exec_status:-0}" == "1" ]]; then
+  if [[ -f "$PID_FILE" ]] && kill -0 "$(cat "$PID_FILE")" 2>/dev/null; then
+    pid=$(cat "$PID_FILE")
+    echo "çalışıyor (pid $pid)"
+    uptime_s=$(( $(date +%s) - $(stat -c %Y "/proc/$pid") ))
+    echo "süre: $((uptime_s / 60)) dk"
+    ps -o rss=,pcpu=,etime= -p "$pid" | awk '{printf "bellek: %.0f MB CPU: %s%% süre: %s\n", $1/1024, $2, $3}'
+    exit 0
+  fi
+  echo "durdu"; exit 1
+fi
+
+if [[ "${exec_stop:-0}" == "1" ]]; then
+  if [[ -f "$PID_FILE" ]] && kill -0 "$(cat "$PID_FILE")" 2>/dev/null; then
+    pid=$(cat "$PID_FILE")
+    say "macOS kapatılıyor (ACPI shutdown)…"
+    if [[ -S "$MONITOR_SOCK" ]]; then
+      python3 - "$MONITOR_SOCK" <<'PY' || true
+import json, socket, sys
+sock = sys.argv[1]
+s = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
+s.settimeout(3)
+try:
+    s.connect(sock)
+    s.recv(4096)
+    s.sendall(json.dumps({"execute": "qmp_capabilities"}).encode() + b"\n")
+    s.recv(4096)
+    s.sendall(json.dumps({"execute": "system_powerdown"}).encode() + b"\n")
+except Exception:
+    pass
+PY
+    fi
+    for _ in $(seq 1 60); do
+      kill -0 "$pid" 2>/dev/null || break
+      sleep 1
+    done
+    if kill -0 "$pid" 2>/dev/null; then
+      warn "nazik kapatma yanıt vermedi, süreç sonlandırılıyor"
+      kill -TERM "$pid" 2>/dev/null || true
+      sleep 3
+      kill -KILL "$pid" 2>/dev/null || true
+    fi
+    rm -f "$PID_FILE"
+    ok "kapatıldı"
+  else
+    say "VM çalışmıyor"
+  fi
+  [[ "$SINGLE_GPU" == "true" ]] && /usr/local/bin/macnix-gpu-mode host 2>/dev/null || true
+  exit 0
+fi
+
+if [[ "${exec_console:-0}" == "1" ]]; then
+  viewer=""
+  for v in remote-viewer vncviewer xtightvncviewer gvncviewer; do
+    command -v "$v" >/dev/null && viewer="$v" && break
+  done
+  [[ -n "$viewer" ]] || die "VNC istemcisi yok (apt install tigervnc-viewer)"
+  if [[ "$viewer" == "remote-viewer" ]]; then
+    exec "$viewer" "vnc://127.0.0.1:590${VNC_DISPLAY}"
+  else
+    exec "$viewer" "127.0.0.1:590${VNC_DISPLAY}"
+  fi
+fi
+
+# ============================================================================
+#  Ön kontroller
+# ============================================================================
+[[ -e /dev/kvm ]] || die "/dev/kvm yok — BIOS'ta SVM/VT-x kapalı olabilir. macnix-vm doctor"
+[[ -f "$DISK" ]] || die "macOS diski yok: $DISK (macnix-setup çalıştırılmamış)"
+[[ -f "$OVMF_CODE" ]] || die "OVMF firmware yok: $OVMF_CODE"
+[[ -d "$OC_DIR" ]] || die "OpenCore bulunamadı: $OC_DIR"
+
+# Varsa çalışan VM'i engelle
+if [[ -f "$PID_FILE" ]] && kill -0 "$(cat "$PID_FILE")" 2>/dev/null; then
+  say "VM zaten çalışıyor (pid $(cat "$PID_FILE"))"
+  exit 0
+fi
+
+# ── Çalışma zamanı OVMF_VARS (değişkenler diske yazılır, master korunur) ─────
+if [[ ! -f "$OVMF_VARS_RUN" ]] || [[ "${MACNIX_FRESH_NVRAM:-0}" == "1" ]]; then
+  cp -f "$OVMF_VARS_MASTER" "$OVMF_VARS_RUN" 2>/dev/null || \
+    cp -f /usr/share/OVMF/OVMF_VARS_4M.fd "$OVMF_VARS_RUN" 2>/dev/null || \
+    cp -f /usr/share/OVMF/OVMF_VARS.fd "$OVMF_VARS_RUN"
+  say "NVRAM sıfırlandı"
+fi
+
+# ============================================================================
+#  Hugepages — başarısız olursa sessizce normal belleğe düş
+# ============================================================================
+MEM_ARGS=()
+HP_WANTED=$(( VM_RAM_MB / 2 ))
+HP_FREE=$(awk '/HugePages_Free:/ {print $2}' /proc/meminfo)
+if (( HP_FREE < HP_WANTED )); then
+  need=$(( HP_WANTED - HP_FREE ))
+  cur=$(awk '/HugePages_Total:/ {print $2}' /proc/meminfo)
+  target=$(( cur + need ))
+  if echo "$target" > /proc/sys/vm/nr_hugepages 2>/dev/null; then
+    HP_FREE=$(awk '/HugePages_Free:/ {print $2}' /proc/meminfo)
+  fi
+fi
+if (( HP_FREE >= HP_WANTED )); then
+  MEM_ARGS=(-mem-path /dev/hugepages -mem-prealloc)
+  ok "hugepages: ${HP_WANTED} × 2 MB ayrıldı"
+else
+  warn "hugepages ayrılamadı (parçalanma) — normal bellek kullanılacak"
+  MEM_ARGS=()
+fi
+
+# ============================================================================
+#  CPU pinning — gerçek topoloji
+# ============================================================================
+mapfile -t HOST_CPUS < <(nproc --all | xargs -I{} seq 0 $(( {} - 1 )))
+TOTAL=${#HOST_CPUS[@]}
+(( VM_CORES < TOTAL )) || VM_CORES=$(( TOTAL > 2 ? TOTAL - 1 : 1 ))
+
+# L3 cache paylaşan CPU gruplarını bul (tek CCD'de kalmak gecikmeyi düşürür)
+L3_GROUP=""
+for c in "${HOST_CPUS[@]}"; do
+  f="/sys/devices/system/cpu/cpu${c}/cache/index3/shared_cpu_list"
+  [[ -f "$f" ]] && { L3_GROUP="$(cat "$f")"; break; }
+done
+
+VM_CPU_LIST=""
+if [[ -n "$L3_GROUP" ]]; then
+  mapfile -t L3_CPUS < <(python3 - "$L3_GROUP" <<'PY'
+import sys
+out = []
+for part in sys.argv[1].split(","):
+    if "-" in part:
+        a, b = part.split("-")
+        out += list(range(int(a), int(b) + 1))
+    elif part.strip():
+        out.append(int(part))
+print("\n".join(map(str, out)))
+PY
+)
+  if (( ${#L3_CPUS[@]} >= VM_CORES )); then
+    # çekirdek çiftlerini değil, fiziksel çekirdekleri tercih et:
+    # en yüksek numaralı yarıyı VM'e ver (host ilk yarıda kalsın)
+    mapfile -t VM_CPU_LIST_ARR < <(printf '%s\n' "${L3_CPUS[@]}" | tail -n "$VM_CORES")
+    VM_CPU_LIST=$(IFS=,; echo "${VM_CPU_LIST_ARR[*]}")
+  fi
+fi
+if [[ -z "$VM_CPU_LIST" ]]; then
+  # son çare: son N CPU
+  mapfile -t VM_CPU_LIST_ARR < <(printf '%s\n' "${HOST_CPUS[@]}" | tail -n "$VM_CORES")
+  VM_CPU_LIST=$(IFS=,; echo "${VM_CPU_LIST_ARR[*]}")
+fi
+
+CPU_ARGS=(-smp "${VM_CORES},cores=${VM_CORES},threads=1,sockets=1")
+if [[ "$ARCH_PROFILE" == "vfio" ]]; then
+  CPU_ARGS+=(-cpu host,kvm=on,vendor=GenuineIntel,+invtsc,+kvm_pv_unhalt,+kvm_pv_eoi,+hypervisor,+ssse3,+sse4.2,+popcnt,+aes,+xsave,+avx,+avx2,check=off)
+else
+  CPU_ARGS+=(-cpu Penryn,kvm=on,vendor=GenuineIntel,+ssse3,+sse4.2,+popcnt,+aes,+xsave,+xsaveopt,+hypervisor,vmware-cpuid-freq=on,check=off)
+fi
+
+# ============================================================================
+#  QEMU argümanları
+# ============================================================================
+Q=(
+  -name macnix,process=macos-vm
+  -machine "q35,accel=kvm,kernel_irqchip=on,vmport=off"
+  -overcommit mem-lock=on
+  -m "${VM_RAM_MB}"
+  "${MEM_ARGS[@]}"
+  "${CPU_ARGS[@]}"
+  -device isa-applesmc,osk="ourhardworkbythesewordsguardedpleasedontsteal(c)AppleComputerInc"
+  -smbios "type=2,manufacturer=Apple Inc.,product=${SMBIOS_MODEL}"
+  -global ICH9-LPC.acpi-pci-hotplug-with-bridge-support=off
+  -global nec-usb-xhci.msi=off
+  -device qemu-xhci,id=xhci
+  -device usb-kbd,bus=xhci.0
+  -device usb-tablet,bus=xhci.0
+  # Firmware
+  -drive "if=pflash,format=raw,readonly=on,file=${OVMF_CODE}"
+  -drive "if=pflash,format=raw,file=${OVMF_VARS_RUN}"
+  # OpenCore
+  -drive "id=OC,if=none,format=qcow2,file=${OC_IMG}"
+  -device "ide-hd,bus=sata.2,drive=OC"
+  # macOS diski — virtio-blk + iothread + AIO
+  -object iothread,id=io0
+  -drive "id=MacHDD,if=none,format=qcow2,file=${DISK},cache=none,aio=native,discard=unmap,detect-zeroes=unmap"
+  -device "virtio-blk-pci,drive=MacHDD,iothread=io0,bootindex=2"
+  # Ağ
+  -netdev "user,id=net0,hostfwd=tcp:127.0.0.1:2222-:22"
+  -device "virtio-net-pci,netdev=net0,mac=52:54:00:$(echo "$SMBIOS_ROM" | cut -c1-6 | sed 's/\(..\)/\1:/g;s/:$//')"
+  # Ses
+  -device intel-hda -device hda-duplex
+  # Yönetim: QMP + VNC (localhost)
+  -qmp "unix:${MONITOR_SOCK},server,nowait"
+  -vnc "127.0.0.1:${VNC_DISPLAY}"
+  -rtc base=utc,clock=host,driftfix=slew
+  -no-hpet
+  -pidfile "$PID_FILE"
+)
+
+# ── Grafik yolu ──────────────────────────────────────────────────────────────
+if [[ "$ARCH_PROFILE" == "vfio" && -n "$PT_GPUS" ]]; then
+  ok "GPU passthrough modu: $PT_GPUS"
+  idx=0
+  for gpu in $PT_GPUS; do
+    extra=""
+    if [[ $idx -eq 0 ]]; then
+      # Birincil GPU: x-vga yalnızca gerçek bir ekran kartıysa
+      if [[ "$SINGLE_GPU" == "true" ]]; then
+        # tek GPU: host görüntüsü yok, x-vga gerekli
+        extra=",x-vga=on,multifunction=on"
+      else
+        extra=",multifunction=on"
+      fi
+    fi
+    Q+=(-device "vfio-pci,host=${gpu}${extra}")
+    # IOMMU grubundaki HDMI sesi de geçir
+    grp=$(basename "$(readlink -f "/sys/bus/pci/devices/${gpu}/iommu_group")" 2>/dev/null || echo "")
+    if [[ -n "$grp" ]]; then
+      for dev in "/sys/kernel/iommu_groups/${grp}/devices"/*; do
+        [[ -e "$dev" ]] || continue
+        addr=$(basename "$dev")
+        [[ "$addr" == "$gpu" ]] && continue
+        cls=$(cat "$dev/class" 2>/dev/null || echo "")
+        if [[ "$cls" == "0x040300" ]]; then
+          Q+=(-device "vfio-pci,host=${addr}")
+          say "  + HDMI ses: ${addr}"
+        fi
+      done
+    fi
+    idx=$((idx + 1))
+  done
+  # Host görüntüsü için küçük yedek ekran (VNC'den erişim)
+  Q+=(-device virtio-vga,max_outputs=1 -display none)
+else
+  say "Yazılım render modu (virtio-gpu)"
+  Q+=(-device "virtio-vga-gl,edid=on,xres=1920,yres=1080" -display none)
+fi
+
+# ── Kurulum medyası ─────────────────────────────────────────────────────────
+if [[ "$MODE" == "install" ]]; then
+  [[ -f "$BASE_IMG" ]] || die "Kurulum imajı yok: $BASE_IMG (macnix-setup --download)"
+  ok "Kurulum modu: BaseSystem.img takılı"
+  Q+=(
+    -drive "id=InstallMedia,if=none,format=raw,file=${BASE_IMG}"
+    -device "ide-hd,bus=sata.3,drive=InstallMedia,bootindex=1"
+  )
+fi
+
+# ── İş parçacığı / öncelik ───────────────────────────────────────────────────
+Q+=(
+  -object "rng-random,id=rng0,filename=/dev/urandom"
+  -device "virtio-rng-pci,rng=rng0"
+)
+
+if [[ "${only_print:-0}" == "1" ]]; then
+  echo "taskset -c $VM_CPU_LIST \\"
+  printf '  %q \\\n' qemu-system-x86_64 "${Q[@]}"
+  exit 0
+fi
+
+# ============================================================================
+#  Başlat
+# ============================================================================
+# Tek GPU modunda host görüntü yöneticisini durdur, GPU'yu serbest bırak
+if [[ "$SINGLE_GPU" == "true" && "$ARCH_PROFILE" == "vfio" ]]; then
+  say "Tek GPU: host grafik oturumu kapatılıyor"
+  systemctl stop lightdm.service 2>/dev/null || true
+  /usr/local/bin/macnix-gpu-mode vm 2>/dev/null || true
+fi
+
+for c in /sys/devices/system/cpu/cpufreq/policy*; do
+  [[ -f "$c/scaling_governor" ]] && echo performance > "$c/scaling_governor" 2>/dev/null || true
+done
+
+say "macOS ${MACOS_VERSION} başlatılıyor (${VM_CORES} çekirdek, ${VM_RAM_MB} MB, ${ARCH_PROFILE})"
+say "Görüntü: VNC 127.0.0.1:${VNC_DISPLAY}  |  Günlük: ${QEMU_LOG}"
+
+set +e
+taskset -c "$VM_CPU_LIST" qemu-system-x86_64 "${Q[@]}" >>"$QEMU_LOG" 2>&1 &
+QPID=$!
+set -e
+echo "$QPID" > "$PID_FILE"
+
+sleep 2
+if ! kill -0 "$QPID" 2>/dev/null; then
+  warn "QEMU başlatılamadı. Son 25 satır:"
+  tail -25 "$QEMU_LOG" >&2
+  rm -f "$PID_FILE"
+  [[ "$SINGLE_GPU" == "true" ]] && /usr/local/bin/macnix-gpu-mode host 2>/dev/null || true
+  die "qemu çıktı. 'macnix-vm doctor' ile tanılama yapın."
+fi
+
+ok "çalışıyor (pid $QPID)"
+
+# Tek GPU değilse: konsolu otomatik aç (kullanıcı macOS'u görsün)
+if [[ "${MACNIX_NO_CONSOLE:-0}" != "1" && "$SINGLE_GPU" != "true" ]]; then
+  sleep 1
+  /usr/local/bin/macnix-vm console >/dev/null 2>&1 &
+fi
+
+wait "$QPID" 2>/dev/null || true
+rm -f "$PID_FILE"
+[[ "$SINGLE_GPU" == "true" ]] && /usr/local/bin/macnix-gpu-mode host 2>/dev/null || true
+ok "macOS kapandı"
