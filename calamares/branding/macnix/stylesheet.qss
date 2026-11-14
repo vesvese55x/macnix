@@ -148,3 +148,42 @@ QToolTip {
     border-radius: 6px;
     padding: 8px;
 }
+
+/* ============================================================================
+ *  QML YAN MENÜ (sidebar: qml) — yerleşik C++ menüsü yerine geçtiğinde
+ *  ---------------------------------------------------------------------------
+ *  Gerçek Calamares çalıştırmasında yerleşik menü koyu zeminde okunaksız
+ *  kalıyordu (metin seçili değilken neredeyse görünmüyordu). QML yan menü
+ *  kırpılma yaptığı için varsayılan (C++) menü kullanılıyor; rengini burada
+ *  QSS ile düzeltiyoruz.
+ * ========================================================================== */
+#sidebarApp, #sidebarApp QWidget {
+    background-color: #0B0C10;
+    border: none;
+}
+#sidebarApp QListView {
+    background-color: #0B0C10;
+    border: none;
+    outline: none;
+}
+#sidebarApp QListView::item {
+    color: #B9B9C2;
+    padding: 8px 14px;
+    border-radius: 8px;
+}
+#sidebarApp QListView::item:hover {
+    background-color: #1C1C1E;
+    color: #FFFFFF;
+}
+#sidebarApp QListView::item:selected {
+    background-color: #1C1C1E;
+    color: #FFFFFF;
+    font-weight: 600;
+}
+#sidebarApp QLabel {
+    color: #8E8E93;
+    background: transparent;
+}
+#mainApp, #viewpane, #viewManager, #viewManagerStack {
+    background-color: #08090D;
+}
