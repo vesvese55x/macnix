@@ -1,20 +1,25 @@
 [Unit]
-Description=MacNix macOS Virtual Machine
-After=network-online.target libvirtd.service macnix-gpu-setup.service
+Description=MacNix macOS sanal makinesi
+After=network-online.target macnix-firstboot.service
 Wants=network-online.target
+# Elle yönetilir: açılışta otomatik başlamaz (macnix-setup / macnix-vm start)
+# Otomatik başlatmak için: systemctl enable macnix-vm.service
+ConditionPathExists=/var/lib/macnix/disks/macOS.qcow2
 
 [Service]
 Type=simple
 User=root
-ExecStart=/opt/macnix/scripts/launch-vm.sh
-ExecStop=/bin/kill -TERM $MAINPID
-Restart=on-failure
-RestartSec=10
+ExecStart=/usr/local/bin/macnix-vm start
+ExecStop=/usr/local/bin/macnix-vm stop
+Restart=no
 KillMode=mixed
-TimeoutStopSec=30
-# CPU and memory limits
+TimeoutStopSec=90
 LimitMEMLOCK=infinity
 LimitNOFILE=65536
+OOMScoreAdjust=-900
+Nice=-5
+IOSchedulingClass=best-effort
+IOSchedulingPriority=2
 
 [Install]
 WantedBy=multi-user.target
