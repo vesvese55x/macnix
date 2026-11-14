@@ -225,6 +225,37 @@ if grep -rn 'set -e' --include='*.sh' scripts/ | grep -q 'set -eu'; then
   pass "betiklerde set -e kullanımı var"
 fi
 
+# ── 9. qmlFilename / marka tutarlılığı (canlı Calamares ile doğrulandı) ────
+hdr "9. qmlFilename + marka QML tutarlılığı"
+python3 - <<'PYCHECK'
+import glob, os, re, sys
+bad = []
+root = os.getcwd()
+for f in glob.glob("calamares/module-conf/*.conf") + glob.glob("calamares/module-conf/*.py"):
+    txt = open(f, encoding="utf-8").read()
+    m = re.search(r'qmlFilename:\s*"([^"]+)"', txt)
+    if not m:
+        continue
+    name = m.group(1)
+    if name.endswith(".qml"):
+        bad.append(f + ": qmlFilename uzantili — Calamares .qml.qml arar (canli VM'de 'Welcome Loading failed.')")
+    if not os.path.exists(os.path.join("calamares/branding/macnix", name + ".qml")):
+        bad.append(f + ": marka dizininde " + name + ".qml yok")
+for qml in ("welcome.qml", "notes.qml", "finishedq.qml"):
+    path = os.path.join("calamares/branding/macnix", qml)
+    if not os.path.exists(path):
+        bad.append(path + " yok")
+        continue
+    if "bgFill" not in open(path, encoding="utf-8").read():
+        bad.append(qml + ": opak zemin (bgFill) yok — yazilar beyaz zeminde okunmaz")
+if bad:
+    for b in bad:
+        print("  x " + b)
+    sys.exit(1)
+print("  ok qmlFilename uzantisiz, marka QML'leri ve zeminler tamam")
+PYCHECK
+[[ $? -eq 0 ]] && pass "qmlFilename + marka QML tutarlı" || fail "qmlFilename/marka hatası"
+
 # ── Özet ───────────────────────────────────────────────────────────────────
 printf '\n%s━━ Özet ━━%s\n' "$C_B" "$C_R"
 printf '  geçen: %s%d%s   uyarı: %s%d%s   hata: %s%d%s\n\n' \
