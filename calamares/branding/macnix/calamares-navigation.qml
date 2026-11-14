@@ -7,9 +7,11 @@
  *  Calamares'in "Done/Bitir" (quit) düğmesi hiç çizilmiyordu.
  *
  *  Çözüm (Calamares 3.2.61 davranışına birebir uyum):
- *   • "Devam"  → ViewManager.nextLabel / nextEnabled (Calamares yönetir)
- *   • "Bitir"  → ViewManager.quitLabel + quitVisible; YALNIZCA en sonda görünür
- *   • "Geri"   → ViewManager.backEnabled
+ *   • Devam    → ViewManager.nextLabel / nextEnabled (Calamares yönetir)
+ *   • Bitir    → ViewManager.quitLabel + quitVisible; YALNIZCA en sonda görünür
+ *   • Geri     → ViewManager.backLabel / backEnabled
+ *  Etiketler Calamares'ten geldiği için "Kurulumu Başlat" (install) ve "Bitir"
+ *  (done) durumları kendiliğinden doğru yazılır.
  *  Böylece sonda kullanıcı "Bitir"e basıp kurulumu kapatabilir (veya açık
  *  kalırsa ilk açılış otomatik yapılır: macnix-firstboot.service).
  * ========================================================================== */
@@ -35,7 +37,8 @@ Rectangle {
         // ── Geri ──────────────────────────────────────────────────────────
         Button {
             id: backBtn
-            text: "← Geri"
+            // Calamares'in kendi (yerelleştirilmiş) etiketi: "&Back"
+            text: "← " + ViewManager.backLabel.replace("&", "")
             visible: ViewManager.backEnabled
             Layout.alignment: Qt.AlignLeft
 
