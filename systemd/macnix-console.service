@@ -1,0 +1,19 @@
+[Unit]
+Description=MacNix kurulum sihirbazı (grafik arayüz)
+After=lightdm.service macnix-vm.service
+Wants=lightdm.service
+ConditionKernelCommandLine=!macnix.live=1
+
+[Service]
+Type=simple
+User=macnix
+Environment=DISPLAY=:0
+Environment=HOME=/home/macnix
+ExecStartPre=/bin/sleep 3
+ExecStart=/usr/local/bin/macnix-setup --gui
+Restart=on-failure
+RestartSec=10
+TimeoutStartSec=infinity
+
+[Install]
+WantedBy=graphical.target
