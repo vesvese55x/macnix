@@ -1,0 +1,227 @@
+#!/usr/bin/env bash
+# ============================================================================
+#  MacNix 2.0 — macnix-doctor
+# ============================================================================
+#  "Neden çalışmıyor?" sorusunun cevabı. Her kontrol bağımsızdır ve
+#  düzeltme önerisi verir. Çıkış kodu: 0 = sorun yok, 1 = uyarı, 2 = kritik.
+# ============================================================================
+set -uo pipefail
+
+ETC="${MACNIX_ETC:-/etc/macnix}"
+VARS="${MACNIX_VAR:-/var/lib/macnix}"
+ERR=0; WARN=0; VM_MISSING=0
+
+C_OK=$'\033[0;32m'; C_WA=$'\033[1;33m'; C_ER=$'\033[0;31m'
+C_B=$'\033[1m'; C_D=$'\033[2m'; C_R=$'\033[0m'
+
+head() { printf '\n%s── %s ──%s\n' "$C_B" "$*" "$C_R"; }
+ok()   { printf '%s  ✓%s %s\n' "$C_OK" "$C_R" "$*"; }
+wr()   { printf '%s  !%s %s\n' "$C_WA" "$C_R" "$*"; WARN=$((WARN+1)); }
+er()   { printf '%s  ✗%s %s\n' "$C_ER" "$C_R" "$*"; ERR=$((ERR+1)); }
+hint() { printf '%s      → %s%s\n' "$C_D" "$*" "$C_R"; }
+
+printf '%s╔══════════════════════════════════════════════════╗\n' "$C_B"
+printf '║  MacNix 2.0 — tanılama (macnix-doctor)           ║\n'
+printf '╚══════════════════════════════════════════════════╝%s\n' "$C_R"
+
+# ── 1. CPU sanallaştırma ────────────────────────────────────────────────────
+head "CPU sanallaştırma"
+if [[ ! -r /proc/cpuinfo ]]; then
+  # chroot / bozuk /proc gibi durumlarda yanlış "kritik" vermeyelim.
+  wr "/proc/cpuinfo okunamadı (chroot? /proc bağlı değil?)"
+elif grep -qE '(^flags.*\b(vmx|svm)\b)' /proc/cpuinfo; then
+  ok "VT-x / AMD-V etkin"
+else
+  er "CPU sanallaştırma bayrağı yok"
+  hint "BIOS/UEFI'de 'SVM Mode' (AMD) veya 'Intel Virtualization Technology' açın"
+fi
+if [[ -e /dev/kvm ]]; then
+  ok "/dev/kvm var"
+  kvm-ok 2>/dev/null | sed 's/^/      /' || true
+else
+  # NOT: /dev/kvm yokluğu macOS VM'ini ENGELLEMEZ; QEMU TCG (yazılım
+  # emülasyonu) ile açılır, yalnızca çok yavaş olur. Bu yüzden KRİTİK değil,
+  # uyarıdır — aksi hâlde iç içe VM'lerde ve KVM'siz sunucularda tanılama
+  # "kurulum bozuk" gibi görünüyordu (VM testinde birebir gözlendi).
+  wr "/dev/kvm yok — macOS VM'i yazılım emülasyonu (TCG) ile açılır, çok yavaş olur"
+  hint "modprobe kvm_amd (veya kvm_intel); BIOS'ta sanallaştırma kapalıysa açın"
+fi
+if grep -q hypervisor /proc/cpuinfo; then
+  wr "Makine zaten bir sanal makine içinde (iç içe sanallaştırma)"
+  hint "İç içe KVM'de GPU passthrough mümkün değildir; yazılım render kullanılır"
+fi
+
+# ── 2. IOMMU / VFIO ─────────────────────────────────────────────────────────
+head "IOMMU ve VFIO"
+groups=$(ls /sys/kernel/iommu_groups 2>/dev/null | wc -l)
+if (( groups > 0 )); then
+  ok "IOMMU etkin ($groups grup)"
+else
+  wr "IOMMU grubu görünmüyor"
+  hint "GRUB: amd_iommu=on iommu=pt (Intel: intel_iommu=on) + BIOS'ta IOMMU açık olmalı"
+fi
+if [[ -f /etc/modprobe.d/macnix-vfio.conf ]]; then
+  ok "macnix-vfio.conf mevcut"
+  grep -h 'ids=' /etc/modprobe.d/macnix-vfio.conf | sed 's/^/      /'
+else
+  wr "macnix-vfio.conf yok"
+  hint "Passthrough GPU tanımlanmamış — yazılım render modunda çalışacak"
+fi
+if [[ -x /usr/local/bin/macnix-gpu-mode ]]; then
+  printf '      GPU sürücü durumu:\n'
+  /usr/local/bin/macnix-gpu-mode status 2>/dev/null | sed 's/^/        /' || true
+fi
+
+# ── 3. macOS VM dosyaları ──────────────────────────────────────────────────
+head "macOS VM dosyaları"
+for f in "$VARS/disks/macOS.qcow2" "$VARS/firmware/OVMF_CODE.fd" \
+         "$VARS/firmware/OVMF_VARS.fd" "$VARS/firmware/OpenCore/OpenCore.qcow2"; do
+  if [[ -f "$f" ]]; then
+    ok "$(basename "$f") — $(du -h "$f" | cut -f1)"
+  else
+    # macOS imajı/OpenCore NORMALDE ilk açılıştaki macnix-setup ile indirilir.
+    # Bu dosyaların yokluğu "kurulum bozuk" DEĞİLDİR; henüz yapılmamış bir
+    # adımdır. Kritik sayılırsa yeni kurulmuş her sistem tanılamada kırmızı
+    # görünür (VM testinde birebir gözlendi: 6 kritik = hepsi beklenen durum).
+    wr "$(basename "$f") henüz yok (macnix-setup ile oluşturulur)"
+    VM_MISSING=1
+  fi
+done
+if [[ "${VM_MISSING:-0}" == "1" ]]; then
+  hint "macOS kurtarma imajını indirmek için:  sudo macnix-setup"
+fi
+if [[ -f "$VARS/disks/BaseSystem.img" ]]; then
+  ok "BaseSystem.img var ($(du -h "$VARS/disks/BaseSystem.img" | cut -f1))"
+else
+  wr "BaseSystem.img yok (kurulum imajı indirilmemiş)"
+  hint "sudo macnix-setup --download"
+fi
+if [[ -d "$VARS/firmware/OpenCore/EFI/OC/Kexts" ]]; then
+  n=$(ls "$VARS/firmware/OpenCore/EFI/OC/Kexts" | wc -l)
+  ok "OpenCore kext sayısı: $n"
+else
+  wr "OpenCore kext dizini yok"
+fi
+if [[ -f "$VARS/firmware/OpenCore/EFI/OC/config.plist" ]]; then
+  if python3 -c "import plistlib;plistlib.load(open('$VARS/firmware/OpenCore/EFI/OC/config.plist','rb'))" 2>/dev/null; then
+    ok "config.plist geçerli plist"
+    patches=$(python3 - <<'PY'
+import plistlib
+try:
+    d = plistlib.load(open("/var/lib/macnix/firmware/OpenCore/EFI/OC/config.plist","rb"))
+    print(len(d.get("Kernel",{}).get("Patch",[])))
+except Exception:
+    print(0)
+PY
+)
+    if grep -q AuthenticAMD /proc/cpuinfo && (( patches < 5 )); then
+      er "AMD CPU ama Kernel.Patch sayısı $patches (AMD yamaları eksik — macOS açılmaz)"
+      hint "sudo macnix-oc --regenerate"
+    else
+      ok "Kernel.Patch sayısı: $patches"
+    fi
+  else
+    er "config.plist bozuk (plist olarak okunamıyor)"
+    hint "sudo macnix-oc --regenerate"
+  fi
+fi
+
+# ── 4. Yapılandırma ────────────────────────────────────────────────────────
+head "Yapılandırma"
+if [[ -f "$ETC/vm.conf" ]]; then
+  ok "vm.conf:"
+  sed 's/^/      /' "$ETC/vm.conf"
+else
+  er "$ETC/vm.conf yok — kurulum tamamlanmamış"
+fi
+if [[ -f "$ETC/install-plan.json" ]]; then
+  python3 - "$ETC/install-plan.json" <<'PY'
+import json, sys
+try:
+    p = json.load(open(sys.argv[1]))
+except Exception as e:
+    print(f"      plan okunamadı: {e}"); raise SystemExit
+print(f"      mimari    : {p.get('arch')}")
+print(f"      macOS     : {p.get('macos_version')}")
+print(f"      PT GPU    : {', '.join(p.get('passthrough_gpus') or []) or 'yok'}")
+for w in p.get("warnings") or []:
+    print(f"      uyarı     : {w}")
+PY
+else
+  wr "install-plan.json yok"
+fi
+grub_cmdline=$(grep -h '^GRUB_CMDLINE_LINUX_DEFAULT' /etc/default/grub 2>/dev/null || echo "")
+if grep -qE 'iommu=on' <<<"$grub_cmdline"; then
+  ok "GRUB'da IOMMU parametresi var"
+else
+  wr "GRUB'da iommu=on yok"
+  hint "macnix-doctor --fix-grub"
+fi
+if [[ -f /etc/modprobe.d/macnix-kvm.conf ]]; then
+  ok "KVM MSR yaması (ignore_msrs=1) mevcut"
+else
+  wr "ignore_msrs ayarı yok — macOS ilk açılışta takılabilir"
+fi
+
+# ── 5. Servisler ───────────────────────────────────────────────────────────
+head "Servisler"
+for s in macnix-firstboot.service macnix-vm.service macnix-console.service; do
+  if systemctl list-unit-files "$s" >/dev/null 2>&1 && systemctl is-enabled "$s" >/dev/null 2>&1; then
+    ok "$s — $(systemctl is-enabled "$s") / $(systemctl is-active "$s")"
+  elif [[ -f "/etc/systemd/system/$s" ]]; then
+    wr "$s var ama etkin değil"
+    hint "sudo systemctl enable $s"
+  else
+    wr "$s yok"
+  fi
+done
+
+# ── 6. Kaynaklar ───────────────────────────────────────────────────────────
+head "Kaynaklar"
+avail=$(awk '/MemAvailable/ {printf "%d", $2/1024}' /proc/meminfo)
+total=$(awk '/MemTotal/ {printf "%d", $2/1024}' /proc/meminfo)
+ok "RAM: ${avail} MB boş / ${total} MB"
+free_gb=$(df -BG --output=avail "$VARS" 2>/dev/null | tail -1 | tr -dc '0-9')
+if [[ -n "$free_gb" ]] && (( free_gb < 30 )); then
+  wr "macOS diski için boş alan ${free_gb} GB (30 GB önerilir)"
+else
+  ok "Disk boş alanı yeterli (${free_gb:-?} GB)"
+fi
+hpf=$(awk '/HugePages_Free/ {print $2}' /proc/meminfo)
+hpt=$(awk '/HugePages_Total/ {print $2}' /proc/meminfo)
+ok "Hugepages: ${hpf}/${hpt} boş (2 MB)"
+
+# ── 7. Son çalıştırma günlüğü ──────────────────────────────────────────────
+head "Son QEMU günlüğü"
+if [[ -f "$VARS/logs/qemu.log" ]]; then
+  tail -12 "$VARS/logs/qemu.log" | sed 's/^/      /'
+  if grep -qi 'permission denied' "$VARS/logs/qemu.log"; then
+    hint "izin hatası: sudo chown -R root:root $VARS"
+  fi
+  if grep -qi 'not found\|No such file' "$VARS/logs/qemu.log"; then
+    hint "eksik dosya — macnix-setup --repair"
+  fi
+else
+  wr "QEMU günlüğü yok (VM hiç başlatılmamış)"
+fi
+
+# ── Özet ───────────────────────────────────────────────────────────────────
+printf '\n%s── Özet ──%s\n' "$C_B" "$C_R"
+# ÇIKIŞ KODU SÖZLEŞMESİ (script'ler ve systemd bunu okuyabilir):
+#   0 = hiç sorun yok
+#   1 = yalnızca uyarı var (macOS VM'i yine de başlatılabilir)
+#   2 = kritik hata
+# NOT: eskiden "uyarı" durumu 1 döndürüyordu; bu, tanılamayı "başarısız"
+# gösteriyordu. Kurulum sonrası ilk açılışta (macnix-firstboot) ölümcül değil.
+if (( ERR == 0 && WARN == 0 )); then
+  printf '%s  Her şey yolunda. macOS başlatmak için: sudo macnix-vm start%s\n' "$C_OK" "$C_R"
+  exit 0
+elif (( ERR == 0 )); then
+  printf '%s  %d uyarı, kritik hata yok.%s\n' "$C_WA" "$WARN" "$C_R"
+  printf '  macOS VM'"'"'i başlatmak için: sudo macnix-vm start (önce sudo macnix-setup)\n'
+  exit 1
+else
+  printf '%s  %d kritik hata, %d uyarı.%s\n' "$C_ER" "$ERR" "$WARN" "$C_R"
+  printf '  Günlükler: %s/logs/  •  Ayrıntı: sudo macnix-vm shell | less\n' "$VARS"
+  exit 2
+fi
