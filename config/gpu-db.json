@@ -1,0 +1,161 @@
+{
+  "_comment": "MacNix 2.0 GPU veritabani. macOS surucu destegi + VFIO uygunlugu. Gercek dunya verisi: Apple Intel surucu destegini Kepler'den sonra birakti; AMD GCN 1.0'in altindaki mobil cipler macOS'ta calismaz.",
+  "version": "2026.11",
+  "families": [
+    {
+      "id": "amd_rdna4",
+      "vendor": "amd",
+      "name": "AMD RDNA 4 (RX 9000)",
+      "ids": ["7550", "7551", "7590", "7591"],
+      "macos_supported": false,
+      "metal": false,
+      "macos_options": [],
+      "note": "macOS 26'da bile surucu yok. VFIO yapilabilir ama macOS gormez."
+    },
+    {
+      "id": "amd_rdna3",
+      "vendor": "amd",
+      "name": "AMD RDNA 3 (RX 7000)",
+      "ids": ["744c", "7450", "745e", "7470", "747e", "7480", "7483", "7487", "7489", "748b", "7499", "749b", "74a0", "74a1", "74a2", "74a5", "74a9", "74b0", "74b1", "74b2", "74b5", "74b9"],
+      "macos_supported": true,
+      "metal": true,
+      "macos_options": ["sequoia", "sonoma"],
+      "min_macos_note": "Navi 3x destegi macOS 14.4+ (Sonoma) ve uzeri",
+      "note": "7900/7800/7700/7600. Sequoia'da olgun, Sonoma 14.4+ ile de calisir."
+    },
+    {
+      "id": "amd_rdna2",
+      "vendor": "amd",
+      "name": "AMD RDNA 2 (RX 6000)",
+      "ids": ["73a5", "73af", "73bf", "73cf", "73df", "73e3", "73ef", "73ff", "7420", "7421", "7422", "7423", "7424", "743f"],
+      "macos_supported": true,
+      "metal": true,
+      "macos_options": ["sequoia", "sonoma", "ventura", "monterey"],
+      "note": "En sorunsuz secenek. 6600/6700/6800/6900 - Metal 3 destekli."
+    },
+    {
+      "id": "amd_rdna1",
+      "vendor": "amd",
+      "name": "AMD RDNA 1 (RX 5000)",
+      "ids": ["7310", "7312", "7318", "731f", "7340", "7341", "7347", "734f", "7360", "7362", "73a3"],
+      "macos_supported": true,
+      "metal": true,
+      "macos_options": ["sequoia", "sonoma", "ventura", "monterey", "catalina"],
+      "note": "Navi 10/12/14. macOS Catalina'dan beri destekli."
+    },
+    {
+      "id": "amd_vega",
+      "vendor": "amd",
+      "name": "AMD Vega (Vega 56/64, Radeon VII)",
+      "ids": ["687f", "6860", "6861", "6862", "6863", "6864", "6867", "6868", "6869", "686a", "686b", "686c", "686d", "66a0", "66a1", "66a2", "66a3", "66af"],
+      "macos_supported": true,
+      "metal": true,
+      "macos_options": ["sequoia", "sonoma", "ventura", "monterey", "high sierra"],
+      "note": "Vega 10/20. macOS High Sierra'dan beri destekli."
+    },
+    {
+      "id": "amd_polaris",
+      "vendor": "amd",
+      "name": "AMD Polaris (RX 400/500, WX)",
+      "ids": ["67c0", "67c2", "67c4", "67c7", "67ca", "67d0", "67df", "67e0", "67e1", "67e3", "67e8", "67eb", "67ef", "67ff", "6fdf", "6980", "6981", "6985", "6987", "699f", "6995"],
+      "macos_supported": true,
+      "metal": true,
+      "macos_options": ["sequoia", "sonoma", "ventura", "monterey", "sierra"],
+      "note": "RX 460/470/480/550/560/570/580/590. Ucuz ve saglam."
+    },
+    {
+      "id": "amd_gcn1_mobile",
+      "vendor": "amd",
+      "name": "AMD GCN 1.0/1.1 mobil (Hainan, Oland, Topaz, Iceland, Sun, Exo)",
+      "ids": ["6600", "6601", "6602", "6603", "6604", "6605", "6606", "6607", "6608", "6610", "6611", "6613", "6617", "6640", "6641", "6650", "6651", "6658", "6660", "6663", "6664", "6665", "6667", "666f", "6800", "6801", "6802", "6806", "6810", "6811", "6816", "6817", "6818", "6819", "6820", "6821", "6823", "6825", "6827", "6835", "6837", "683d", "683f", "6900", "6901", "6902", "6903", "6907", "6910", "6911", "691f"],
+      "macos_supported": false,
+      "metal": false,
+      "macos_options": [],
+      "note": "★ Radeon R7 M260/M265/M340/M360, R5 M330/M430, HD 8670M/8850M vb. macOS 10.13'ten sonra bu cipler icin surucu YOK. Cogu muxless laptop'ta VFIO de calismaz."
+    },
+    {
+      "id": "nvidia_kepler",
+      "vendor": "nvidia",
+      "name": "NVIDIA Kepler (GTX 600/700, Quadro K)",
+      "ids": [],
+      "id_ranges": [[["0fc0", "0fc0"], ["0fe0", "0fe0"], ["0ff0", "0fff"], ["1000", "102f"], ["1180", "11ff"], ["1280", "12bf"], ["13c0", "13ff"]], ["0f00", "0fff"], ["1000", "11ff"], ["1200", "13ff"]],
+      "macos_supported": true,
+      "metal": false,
+      "macos_options": ["monterey", "big sur", "catalina"],
+      "max_macos_note": "Son resmi destek macOS 11 Big Sur (OCLP ile Monterey). Yeni surumlerde calismaz.",
+      "note": "Apple'in destekledigi son NVIDIA nesli. Oyun icin sinirli."
+    },
+    {
+      "id": "nvidia_maxwell",
+      "vendor": "nvidia",
+      "name": "NVIDIA Maxwell (GTX 750/900)",
+      "ids": [],
+      "id_ranges": [["1340", "13ff"], ["1380", "13ff"], ["1400", "17ff"], ["174b", "174b"], ["1b80", "1bff"]],
+      "macos_supported": false,
+      "metal": false,
+      "macos_options": [],
+      "note": "macOS surucusu yok."
+    },
+    {
+      "id": "nvidia_pascal",
+      "vendor": "nvidia",
+      "name": "NVIDIA Pascal (GTX 10xx)",
+      "ids": ["1b00", "1b01", "1b02", "1b03", "1b04", "1b06", "1b30", "1b80", "1b81", "1b82", "1b83", "1b84", "1b87", "1b88", "1b8d", "1b8e", "1be0", "1be1", "1c02", "1c03", "1c04", "1c06", "1c07", "1c20", "1c21", "1c22", "1c23", "1c30", "1c31", "1c60", "1c61", "1c62", "1c70", "1c81", "1c82", "1c83", "1c94", "1cb1", "1cba", "1cbb", "1cbc", "1d01", "1d02", "1d10", "1d11", "1d12"],
+      "macos_supported": false,
+      "metal": false,
+      "macos_options": [],
+      "note": "macOS surucusu yok (Web Driver'lar Mojave'de bitti)."
+    },
+    {
+      "id": "nvidia_turing_plus",
+      "vendor": "nvidia",
+      "name": "NVIDIA Turing/Ampere/Ada (GTX 16xx, RTX 20xx-50xx)",
+      "ids": [],
+      "id_ranges": [["1e00", "1fff"], ["2000", "21ff"], ["2200", "25ff"], ["2680", "28ff"], ["2900", "2bff"], ["2b00", "2bff"]],
+      "macos_supported": false,
+      "metal": false,
+      "macos_options": [],
+      "note": "macOS surucusu yok."
+    },
+    {
+      "id": "amd_gcn12_apu",
+      "vendor": "amd",
+      "name": "AMD GCN 1.2/2.0 APU iGPU (Carrizo/Bristol Ridge/Wani, Kaveri)",
+      "ids": ["1304", "1305", "1306", "1307", "1309", "130a", "130b", "130c", "130d", "130e", "130f", "1310", "1311", "1312", "1313", "1314", "1315", "1316", "1317", "1318", "1319", "131a", "131b", "131c", "131d", "15dd", "15d8", "15e7", "1636", "1638", "164c", "164d", "9874", "9850", "9851", "9852", "9853", "9854"],
+      "macos_supported": false,
+      "metal": false,
+      "macos_options": [],
+      "note": "★ A6/A8/A10/A12 APU'larin dahili grafigi (Radeon R5/R7 Graphics, Wani/Carrizo). macOS'ta bu iGPU'lar icin surucu YOK - Metal destegi hic yok."
+    },
+    {
+      "id": "intel_igpu",
+      "vendor": "intel",
+      "name": "Intel iGPU (HD/Iris/UHD/Xe)",
+      "ids": [],
+      "id_vendor": "8086",
+      "macos_supported": false,
+      "metal": false,
+      "macos_options": [],
+      "note": "VM icinde Intel iGPU passthrough/GVT-g macOS'ta Metal vermez. Host'ta kalir."
+    },
+    {
+      "id": "virtio",
+      "vendor": "virtio",
+      "name": "Sanal GPU (virtio/QXL/VMware)",
+      "ids": ["1111", "1050", "0405"],
+      "macos_supported": false,
+      "metal": false,
+      "macos_options": [],
+      "note": "VM icinde yazilim render."
+    }
+  ],
+  "macos_releases": {
+    "tahoe":    {"name": "macOS 26 Tahoe",   "board": "Mac-7BA5B2D9E42DDD94", "min_ram_gb": 8, "notes": "2025+; Intel Mac destegi sinirli, AMD GPU sart"},
+    "sequoia":  {"name": "macOS 15 Sequoia", "board": "Mac-7BA5B2D9E42DDD94", "min_ram_gb": 8},
+    "sonoma":   {"name": "macOS 14 Sonoma",  "board": "Mac-7BA5B2D9E42DDD94", "min_ram_gb": 8},
+    "ventura":  {"name": "macOS 13 Ventura", "board": "Mac-7BA5B2D9E42DDD94", "min_ram_gb": 8},
+    "monterey": {"name": "macOS 12 Monterey","board": "Mac-7BA5B2D9E42DDD94", "min_ram_gb": 8},
+    "bigsur":   {"name": "macOS 11 Big Sur", "board": "Mac-7BA5B2D9E42DDD94", "min_ram_gb": 4},
+    "catalina": {"name": "macOS 10.15 Catalina", "board": "Mac-7BA5B2D9E42DDD94", "min_ram_gb": 4}
+  }
+}
