@@ -1,0 +1,12 @@
+# MacNix — macnix kullanıcısı kurulum/yönetim araçlarını şifresiz çalıştırabilir.
+# Yalnızca bu araçlarla sınırlıdır; genel NOPASSWD verilmez.
+macnix ALL=(root) NOPASSWD: /usr/local/bin/macnix-vm
+macnix ALL=(root) NOPASSWD: /usr/local/bin/macnix-install-macos
+macnix ALL=(root) NOPASSWD: /usr/local/bin/macnix-oc
+macnix ALL=(root) NOPASSWD: /usr/local/bin/macnix-assets
+macnix ALL=(root) NOPASSWD: /usr/local/bin/macnix-gpu-mode
+macnix ALL=(root) NOPASSWD: /usr/local/bin/macnix-doctor
+macnix ALL=(root) NOPASSWD: /usr/local/bin/macnix-setup
+macnix ALL=(root) NOPASSWD: /usr/local/bin/macnix-fetch-macos
+macnix ALL=(root) NOPASSWD: /usr/bin/calamares
+macnix ALL=(root) NOPASSWD: /bin/systemctl restart macnix-vm.service
