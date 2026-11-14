@@ -1,0 +1,55 @@
+#!/usr/bin/env bash
+# MacNix — günlük toplama aracı.  Kullanım: macnix-log [--tar]
+set -uo pipefail
+VARS="${MACNIX_VAR:-/var/lib/macnix}"
+OUT="${1:-/tmp/macnix-report-$(date +%Y%m%d-%H%M).tar.gz}"
+
+printf '\033[1mMacNix — tanılama paketi\033[0m\n\n'
+
+echo "══ Sistem ══"
+uname -a
+echo
+cat /etc/os-release 2>/dev/null | head -3
+echo
+
+echo "══ CPU ══"
+lscpu 2>/dev/null | head -20
+echo
+
+echo "══ Bellek ══"
+free -h
+grep -E 'HugePages' /proc/meminfo
+echo
+
+echo "══ GPU / PCI ══"
+lspci -nnk 2>/dev/null | grep -A3 -E 'VGA|3D|Display'
+echo
+
+echo "══ IOMMU ══"
+for g in /sys/kernel/iommu_groups/*/devices/*; do
+  [[ -e "$g" ]] || continue
+  grp=$(basename "$(dirname "$(dirname "$g")")")
+  dev=$(basename "$g")
+  printf 'grup %-4s %s\n' "$grp" "$(lspci -nns "$dev" 2>/dev/null)"
+done 2>/dev/null | head -40
+echo
+
+echo "══ MacNix durumu ══"
+/usr/local/bin/macnix-doctor 2>&1 | tail -40 || true
+echo
+
+echo "══ Günlükler ══"
+for f in /var/log/macnix-live.log /var/log/macnix-firstboot.log \
+         /var/log/macnix-assets.log "$VARS/logs/qemu.log" "$VARS/logs/install.log" \
+         /var/log/macnix-setup.log; do
+  [[ -f "$f" ]] && echo "  $f ($(du -h "$f" | cut -f1))"
+done
+
+if [[ "${1:-}" == "--tar" || "${2:-}" == "--tar" ]]; then
+  tar czf "$OUT" \
+    -C / var/log/macnix-live.log var/log/macnix-firstboot.log \
+    var/log/macnix-assets.log etc/macnix etc/default/grub \
+    etc/modprobe.d/macnix-kvm.conf etc/modprobe.d/macnix-vfio.conf \
+    "$VARS/logs" "$VARS"/firmware/OpenCore/EFI/OC/config.plist 2>/dev/null || true
+  printf '\nPaket: %s\n' "$OUT"
+fi
