@@ -26,13 +26,29 @@ Item {
         font.pixelSize: 18
         font.bold: true
         color: "#1f2933"
-        text: qsTr("MacNix 2.0 — Kurulum Öncesi Donanım Raporu")
+        text: qsTr("MacNix 2.0 — Gelişmiş macOS Sanallaştırma Distrosu")
+    }
+
+    Text {
+        id: subtitle
+        anchors.left: parent.left
+        anchors.right: parent.right
+        anchors.top: title.bottom
+        anchors.leftMargin: 16
+        anchors.rightMargin: 16
+        anchors.topMargin: 2
+        wrapMode: Text.WordWrap
+        font.pixelSize: 10
+        color: "#52606d"
+        text: qsTr("BELGESELSEMO tarafından ARENA.AI sayesinde geliştirildi · " +
+                   "github.com/local-over/macnix orijinal reposundan fork edilerek " +
+                   "· belgeselsemo.com.tr")
     }
 
     Text {
         anchors.left: parent.left
         anchors.right: parent.right
-        anchors.top: title.bottom
+        anchors.top: subtitle.bottom
         anchors.bottom: parent.bottom
         anchors.margins: 16
         wrapMode: Text.WordWrap
