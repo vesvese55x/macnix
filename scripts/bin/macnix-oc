@@ -1,0 +1,236 @@
+#!/usr/bin/env bash
+# ============================================================================
+#  MacNix 2.0 — macnix-oc
+# ============================================================================
+#  OpenCore önyükleme diskini SIFIRDAN üretir (OpenCore.qcow2).
+#
+#  Orijinal MacNix, OSX-KVM deposunun hazır OpenCore.qcow2'sini kopyalıyordu;
+#  o imaj bu donanıma özel yapılandırma içermediği için (AMD yamaları yok,
+#  yanlış SMBIOS, yanlış kext seti) macOS ya hiç açılmıyor ya da açılıp
+#  donanımı tanımıyordu.
+#
+#  Bu araç: FAT32 EFI bölümü oluşturur, kext/sürücü yerleşimini yapar,
+#  config.plist'i donanıma göre (CPU vendor, GPU, macOS sürümü) üretir.
+#
+#  Kullanım:
+#     macnix-oc --build              # /var/lib/macnix/firmware/OpenCore/OpenCore.qcow2
+#     macnix-oc --build --mojave-fix # ek uyumluluk bayrakları
+#     macnix-oc --check              # mevcut config'i denetle
+#     macnix-oc --dump-config        # üretilen plist'i yazdır
+# ============================================================================
+set -Eeuo pipefail
+
+VARS="${MACNIX_VAR:-/var/lib/macnix}"
+FW="$VARS/firmware"
+OC_OUT="$FW/OpenCore"
+ASSETS="${MACNIX_ASSETS:-$VARS/assets}"
+PLAN="${MACNIX_ETC:-/etc/macnix}/install-plan.json"
+BUILD=0; CHECK=0; DUMP=0
+
+C_OK=$'\033[0;32m'; C_WA=$'\033[1;33m'; C_ER=$'\033[0;31m'; C_B=$'\033[1m'; C_R=$'\033[0m'
+say()  { printf '%s[macnix]%s %s\n' "$C_B" "$C_R" "$*"; }
+ok()   { printf '%s  [ ok ]%s %s\n' "$C_OK" "$C_R" "$*"; }
+warn() { printf '%s [warn]%s %s\n' "$C_WA" "$C_R" "$*"; }
+die()  { printf '%s [fail]%s %s\n' "$C_ER" "$C_R" "$*" >&2; exit 1; }
+
+while [[ $# -gt 0 ]]; do
+  case "$1" in
+    --build) BUILD=1; shift ;;
+    --check) CHECK=1; shift ;;
+    --dump-config) DUMP=1; shift ;;
+    -h|--help) sed -n '2,22p' "$0"; exit 0 ;;
+    *) die "bilinmeyen argüman: $1" ;;
+  esac
+done
+
+[[ $EUID -eq 0 ]] || die "root gerekli"
+
+# ── Python tarafı: config.plist üret ────────────────────────────────────────
+gen_config() {
+  local out="$1"
+  python3 - "$out" <<'PY'
+import json, os, sys
+sys.path.insert(0, "/opt/macnix/scripts")
+import macnix_lib as ml
+
+out = sys.argv[1]
+plan_path = "/etc/macnix/install-plan.json"
+plan = {}
+if os.path.exists(plan_path):
+    with open(plan_path) as fh:
+        plan = json.load(fh)
+
+# CPU satıcısı (plan'da yoksa /proc'tan)
+if "cpu_vendor" not in plan:
+    try:
+        with open("/proc/cpuinfo") as fh:
+            plan["cpu_vendor"] = "amd" if "AuthenticAMD" in fh.read() else "intel"
+    except OSError:
+        plan["cpu_vendor"] = "intel"
+plan["needs_amd_patches"] = plan["cpu_vendor"] == "amd"
+
+# SMBIOS
+smp = "/etc/macnix/smbios.json"
+if os.path.exists(smp):
+    with open(smp) as fh:
+        serials = json.load(fh)
+else:
+    serials = ml.gen_serials(plan.get("smbios_model", "iMacPro1,1"))
+
+# AMD yamaları
+patches = []
+if plan["cpu_vendor"] == "amd":
+    pfile = "/var/lib/macnix/assets/patch/amd-vanilla.plist"
+    patches = ml.read_amd_patches(pfile)
+    if not patches:
+        print("UYARI: AMD yamaları bulunamadı — macOS açılmayacak!", file=sys.stderr)
+
+cfg = ml.build_opencore_config(plan, serials, patches)
+
+# Ekran kartı: passthrough varsa boot-args'tan yazılım render bayraklarını çıkar
+if plan.get("passthrough_gpus"):
+    nv = cfg["NVRAM"]["Add"]["7C436110-AB2A-4BBB-A880-FE41995C9F82"]
+    nv["boot-args"] = " ".join(
+        a for a in nv["boot-args"].split() if a not in ("-igfxvesa", "nv_disable=1"))
+
+ml.write_plist(cfg, out)
+print(f"config.plist üretildi: {len(patches)} AMD yaması, "
+      f"SMBIOS={serials.get('model')}, arch={plan.get('arch')}")
+PY
+}
+
+check_config() {
+  local cfg="$1"
+  python3 - "$cfg" <<'PY'
+import plistlib, sys
+path = sys.argv[1]
+try:
+    with open(path, "rb") as fh:
+        d = plistlib.load(fh)
+except Exception as exc:
+    print(f"HATA: config.plist okunamadı: {exc}")
+    sys.exit(2)
+problems = []
+for section in ("ACPI", "Booter", "DeviceProperties", "Kernel", "Misc",
+                "NVRAM", "PlatformInfo", "UEFI"):
+    if section not in d:
+        problems.append(f"eksik bölüm: {section}")
+kernel = d.get("Kernel", {})
+if not kernel.get("Add"):
+    problems.append("Kernel.Add boş — hiç kext yok")
+if not kernel.get("Quirks", {}).get("DisableIoMapper"):
+    problems.append("Kernel.Quirks.DisableIoMapper kapalı (VFIO ile çakışabilir)")
+if not d.get("UEFI", {}).get("Drivers"):
+    problems.append("UEFI.Drivers boş — OpenRuntime yok, macOS açılmaz")
+gen = d.get("PlatformInfo", {}).get("Generic", {})
+for key in ("SystemProductName", "SystemSerialNumber", "MLB", "SystemUUID"):
+    if not gen.get(key):
+        problems.append(f"PlatformInfo.Generic.{key} boş")
+if problems:
+    print("SORUNLAR:")
+    for p in problems:
+        print("  -", p)
+    sys.exit(1)
+print(f"config.plist sağlıklı — {len(kernel.get('Add', []))} kext, "
+      f"{len(kernel.get('Patch', []))} yama, SMBIOS={gen.get('SystemProductName')}")
+PY
+}
+
+if (( DUMP )); then
+  gen_config /dev/stdout 2>/dev/null || gen_config /tmp/macnix-oc.plist && cat /tmp/macnix-oc.plist
+  exit 0
+fi
+
+if (( CHECK )); then
+  cfg="$OC_OUT/EFI/OC/config.plist"
+  [[ -f "$cfg" ]] || die "config bulunamadı: $cfg"
+  check_config "$cfg"
+  exit $?
+fi
+
+(( BUILD )) || { sed -n '2,22p' "$0"; exit 0; }
+
+# ============================================================================
+#  Derleme
+# ============================================================================
+say "OpenCore EFI üretiliyor"
+[[ -d "$ASSETS/opencore/OC" ]] || die "OpenCore varlıkları yok: $ASSETS/opencore/OC
+Çözüm: sudo macnix-assets"
+
+WORK="$(mktemp -d /tmp/macnix-oc.XXXXXX)"
+trap 'rm -rf "$WORK"' EXIT
+EFI="$WORK/EFI"
+mkdir -p "$EFI/BOOT" "$EFI/OC/"{Kexts,Drivers,ACPI,Tools,Resources}
+
+# 1) Önyükleyici ikilileri
+cp "$ASSETS/opencore/OC/OpenCore.efi" "$EFI/OC/OpenCore.efi" || die "OpenCore.efi kopyalanamadı"
+if [[ -f "$ASSETS/opencore/OC/Bootstrap/Bootstrap.efi" ]]; then
+  cp "$ASSETS/opencore/OC/Bootstrap/Bootstrap.efi" "$EFI/OC/Bootstrap.efi" 2>/dev/null || true
+fi
+# BOOTx64.efi tercih sırası
+for cand in "$ASSETS/opencore/OC/Bootstrap/Bootstrap.efi" \
+            "$ASSETS/opencore/BOOT/BOOTx64.efi" \
+            "$ASSETS/opencore/OC/OpenCore.efi"; do
+  if [[ -f "$cand" ]]; then
+    cp "$cand" "$EFI/BOOT/BOOTx64.efi"
+    ok "BOOTx64.efi ← $(basename "$(dirname "$cand")")/$(basename "$cand")"
+    break
+  fi
+done
+ok "OpenCore.efi ($(du -h "$EFI/OC/OpenCore.efi" | cut -f1))"
+
+# 2) Sürücüler (zorunlu olanlar)
+for drv in OpenRuntime.efi OpenHfsPlus.efi ResetNvramEntry.efi OpenCanopy.efi AudioDxe.efi; do
+  if [[ -f "$ASSETS/opencore/OC/Drivers/$drv" ]]; then
+    cp "$ASSETS/opencore/OC/Drivers/$drv" "$EFI/OC/Drivers/"
+  elif [[ "$drv" == "OpenRuntime.efi" || "$drv" == "OpenHfsPlus.efi" ]]; then
+    die "zorunlu sürücü eksik: $drv
+Çözüm: sudo macnix-assets (OpenCore paketini yeniden indirir)"
+  fi
+done
+ok "Sürücüler: $(ls "$EFI/OC/Drivers" | tr '\n' ' ')"
+
+# 3) Kextler
+for kext in Lilu VirtualSMC WhateverGreen AppleALC; do
+  if [[ -d "$ASSETS/kexts/${kext}.kext" ]]; then
+    cp -a "$ASSETS/kexts/${kext}.kext" "$EFI/OC/Kexts/"
+  else
+    warn "${kext}.kext bulunamadı — macOS'ta ilgili donanım çalışmayabilir"
+  fi
+done
+ok "Kextler: $(ls "$EFI/OC/Kexts" 2>/dev/null | tr '\n' ' ')"
+
+# 4) config.plist
+gen_config "$EFI/OC/config.plist" || die "config.plist üretilemedi"
+check_config "$EFI/OC/config.plist" || warn "config denetiminde uyarı var (yukarıda)"
+
+# 5) FAT32 EFI imajı → qcow2
+IMG="$WORK/opencore.img"
+SIZE_KB=65536   # 64 MB — bolca yer (kext + sürücü + yedek)
+dd if=/dev/zero of="$IMG" bs=1k count="$SIZE_KB" status=none
+mkfs.vfat -F 32 -n OPENCORE "$IMG" >/dev/null
+export MTOOLS_SKIP_CHECK=1
+mmd -i "$IMG" ::/EFI ::/EFI/BOOT ::/EFI/OC
+for d in Kexts Drivers ACPI Tools Resources; do
+  mmd -i "$IMG" "::/EFI/OC/$d"
+  if [[ -n "$(ls -A "$EFI/OC/$d" 2>/dev/null)" ]]; then
+    mcopy -s -i "$IMG" "$EFI/OC/$d"/* "::/EFI/OC/$d/"
+  fi
+done
+mcopy -i "$IMG" "$EFI/OC/OpenCore.efi" "::/EFI/OC/"
+mcopy -i "$IMG" "$EFI/OC/config.plist" "::/EFI/OC/"
+[[ -f "$EFI/OC/Bootstrap.efi" ]] && mcopy -i "$IMG" "$EFI/OC/Bootstrap.efi" "::/EFI/OC/" || true
+mcopy -i "$IMG" "$EFI/BOOT/BOOTx64.efi" "::/EFI/BOOT/BOOTx64.efi"
+ok "FAT imajı dolduruldu ($(du -h "$IMG" | cut -f1))"
+
+mkdir -p "$OC_OUT"
+qemu-img convert -f raw -O qcow2 "$IMG" "$OC_OUT/OpenCore.qcow2"
+qemu-img resize "$OC_OUT/OpenCore.qcow2" 64M >/dev/null 2>&1 || true
+ok "OpenCore.qcow2: $OC_OUT/OpenCore.qcow2 ($(du -h "$OC_OUT/OpenCore.qcow2" | cut -f1))"
+
+# 6) Denetim dosyalarını da bırak (elle incelemek için)
+mkdir -p "$OC_OUT/EFI"
+cp -a "$EFI/." "$OC_OUT/EFI/"
+
+say "Tamamlandı. Doğrulama:"
+check_config "$OC_OUT/EFI/OC/config.plist" || true
