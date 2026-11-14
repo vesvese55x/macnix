@@ -17,6 +17,16 @@ import QtQuick.Layouts 1.12
 
 Item {
     id: welcomeRoot
+    // OPAK ZEMİN ŞART: Calamares'in sayfa zemini beyaz olabiliyor; metin
+    // renklerimiz koyu tema için seçildi. Zemin yoksa yazılar okunmuyor
+    // (gerçek Calamares 3.3.14 çalıştırmasında birebir görüldü).
+    Rectangle {
+        id: bgFill
+        anchors.fill: parent
+        color: "#08090D"
+        z: -1
+    }
+
     width: parent ? parent.width : 900
     height: parent ? parent.height : 600
 
