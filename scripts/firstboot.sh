@@ -47,6 +47,49 @@ if [[ -f "$LDMC" ]] && grep -q '^autologin-user=macnix-live' "$LDMC"; then
     log "lightdm autologin macnix yapıldı"
 fi
 
+# ── 0c. Parolayı tamamen kaldır — kullanıcı adı/parola SORULMAZ ───────────
+# Kullanıcı kurulum sihirbazında parola alanını boş bırakabildiği gibi, hiç
+# dokunmadığı durumda da hiçbir yerde parola istenmemelidir. hesabı parolasız
+# bırakıyoruz:
+#   • passwd -d  → /etc/shadow'da boş parola alanı
+#   • lightdm autologin zaten açık; parola yalnızca kilit ekranı/sudo için
+#     gerekir ve sudo NOPASSWD kurallarıyla (/etc/sudoers.d/99-macnix) çözülür.
+#   • sudo -n çalışmazsa /etc/sudoers.d/99-macnix yeniden yazılır.
+TARGET_USER="macnix"
+if id -u "$TARGET_USER" >/dev/null 2>&1; then
+    passwd -d "$TARGET_USER" >/dev/null 2>&1 && \
+        log "parola kaldırıldı (macnix → parolasız)" || \
+        log "parola kaldırılamadı (zararsız: autologin açık)"
+    # kullanıcı adını Global Storage'dan farklı seçtiyse onu da parolasız yap
+    ALT_USER="$(sed -n 's/^autologin-user=\(.*\)/\1/p' \
+        /etc/lightdm/lightdm.conf 2>/dev/null | tail -1)"
+    if [[ -n "${ALT_USER:-}" && "$ALT_USER" != "$TARGET_USER" ]] && id -u "$ALT_USER" >/dev/null 2>&1; then
+        passwd -d "$ALT_USER" >/dev/null 2>&1 || true
+        log "autologin kullanıcısı parolasız: $ALT_USER"
+    fi
+    # sudoers: NOPASSWD kuralları her durumda yerinde olsun
+    if [[ ! -f /etc/sudoers.d/99-macnix ]] || ! visudo -cf /etc/sudoers.d/99-macnix >/dev/null 2>&1; then
+        printf '%s ALL=(ALL) NOPASSWD: ALL\n' "$TARGET_USER" > /etc/sudoers.d/99-macnix
+        chmod 0440 /etc/sudoers.d/99-macnix
+        log "sudoers NOPASSWD yeniden yazıldı"
+    fi
+fi
+
+# ── 0d. Oturum açma ekranı (lightdm) tamamen kapatılsın ───────────────────
+# Autologin bir sebeple çalışmazsa (ör. kullanıcı adı değişti) kullanıcı yine
+# de parola ekranıyla karşılaşmasın: greeter'ı devre dışı bırakıp oturumu
+# doğrudan başlatıyoruz. lightdm autologin'i zaten destekliyor; burada ek
+# güvence olarak greeter gizleniyor.
+LDMC="/etc/lightdm/lightdm.conf.d/50-macnix.conf"
+if [[ -f "$LDMC" ]]; then
+    grep -q '^autologin-user-timeout=' "$LDMC" || echo 'autologin-user-timeout=0' >> "$LDMC"
+    grep -q '^autologin-session=' "$LDMC" || echo 'autologin-session=openbox' >> "$LDMC"
+    if ! grep -q '^autologin-user=' "$LDMC"; then
+        echo "autologin-user=$TARGET_USER" >> "$LDMC"
+    fi
+    log "lightdm otomatik oturum: $(sed -n 's/^autologin-user=//p' "$LDMC" | tail -1)"
+fi
+
 # ── 1. CPU / RAM gerçek değerlerle vm.conf'u güncelle ──────────────────────
 VM_CONF="/etc/macnix/vm.conf"
 total_ram_mb=$(awk '/MemTotal/ {printf "%d", $2/1024}' /proc/meminfo)
