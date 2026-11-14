@@ -304,9 +304,34 @@ stage_overlay() {
   fi
 
 
-  for f in "${ROOT}"/calamares/module-conf/*.conf; do
+  # Modül yapılandırmaları: .conf VE .py (welcomeq/finishedq gibi QML
+  # modüllerinin yapılandırması Calamares'te .py adıyla da yüklenir; ikisini
+  # de kopyalıyoruz ki hangi dosya adını ararsa bulsun).
+  for f in "${ROOT}"/calamares/module-conf/*.conf "${ROOT}"/calamares/module-conf/*.py; do
     [[ -f "$f" ]] || continue
+    case "$(basename "$f")" in
+      *.py) continue ;;   # aşağıdaki özel blokta işleniyor
+    esac
     install -m 0644 "$f" "$ROOTFS/etc/calamares/modules/$(basename "$f")"
+  done
+
+  # ── QML modülleri: welcomeq / finishedq ────────────────────────────────
+  # Calamares 3.2.61 bu iki modülün yapılandırmasını
+  #   <modül>.conf  VEYA  <modül>.py
+  # adıyla arar (modül Adı "welcomeq"/"finishedq"). İki adı da yazıyoruz;
+  # içerik birebir aynı. Eksik bırakılırsa Calamares açılışta
+  #   "The following modules could not be loaded: welcomeq"
+  # diyerek HİÇ AÇILMAZ (canlı testte yaşandı).
+  local q
+  for q in welcomeq finishedq; do
+    if [[ -f "${ROOT}/calamares/module-conf/${q}.py" ]]; then
+      install -m 0644 "${ROOT}/calamares/module-conf/${q}.py" \
+          "$ROOTFS/etc/calamares/modules/${q}.conf"
+      install -m 0644 "${ROOT}/calamares/module-conf/${q}.py" \
+          "$ROOTFS/etc/calamares/modules/${q}.py"
+    else
+      warn "${q} yapılandırması yok — Calamares açılışta modülü bulamaz!"
+    fi
   done
 
   # notesqml: Debian'da "notes" modülü yok; notlar QML ile gösterilir.
@@ -322,6 +347,21 @@ stage_overlay() {
       --dest "$ROOTFS/etc/calamares/branding/macnix/qml/notes.qml" \
       --dest2 "$ROOTFS/etc/calamares/qml/notes.qml" || warn "notes.qml üretilemedi"
   fi
+
+  # ── KİMLİK: users modülünün önerdiği ad/makine adı ────────────────────
+  # Kullanıcı hiçbir şey yazmak zorunda değil: alanlar "macnix" ile dolu gelir.
+  # (Calamares 3.2.61'de otomatik doldurma için JSON preset mekanizması YOK —
+  #  yalnızca 3.3'te var. Bu yüzden .conf içinde yalnızca davranış anahtarları
+  #  kullanılıyor; alanların öneri değerleri zaten "macnix" hosts/DMI'dan gelir.)
+  install -d "$ROOTFS/etc/macnix"
+  cat > "$ROOTFS/etc/macnix/kimlik.conf" <<'KIMLIK'
+# MacNix 2.0 — kurulum kimliği (bilgi amaçlı; Calamares okumaz)
+ONERILEN_KULLANICI=macnix
+ONERILEN_MAKINE=macnix
+PAROLA_POLITIKASI=parolasiz   # kurulum sonrası passwd -d ile kaldırılır
+AUTOLOGIN=acik
+KIMLIK
+  chmod 0644 "$ROOTFS/etc/macnix/kimlik.conf"
 
   # NOT: sahiplik düzeltmesi BURADA YAPILMAZ. overlay/ ağacı bu satırdan
   # SONRA kopyalandığı için (aşağıya bakın) düzeltme eziliyordu. Nihai
