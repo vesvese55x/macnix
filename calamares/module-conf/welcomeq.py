@@ -7,6 +7,10 @@
 #  böylece "Gelişmiş macOS Sanallaştırma Distrosu" tanımı ve fork/kredi bilgisi
 #  tam denetimimizde olur.
 #
+#  NOT: qmlFilename ".qml" UZANTISI OLMADAN yazılır (Calamares uzantıyı
+#  kendisi ekler). 2026-11-14 canlı VM testinde "welcome.qml" yazıldığı için
+#  modül boş QML ile açıldı → ekranda "Welcome Loading failed." görüldü.
+#
 #  NOT: Bu modülün yapılandırma dosyası Calamares'te "welcomeq.conf" adıyla da
 #  çalışır; Biz .py uzantısını kullanıyoruz çünkü Debian'ın calamares paketi
 #  modül yapılandırmasını adıyla arar (settings.conf -> module-conf/%1.conf
@@ -16,7 +20,7 @@
 #  ekran denetimi var (grafik ortam olmadan Calamares açılmaz).
 ---
 qmlSearch: branding
-qmlFilename: "welcome.qml"
+qmlFilename: "welcome"
 
 showSupportUrl:         false
 showKnownIssuesUrl:     false
