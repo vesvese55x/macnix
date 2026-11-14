@@ -1,163 +1,200 @@
-# MacNix 2.0
+<p align="center">
+  <img src="calamares/branding/macnix/macnix_logo.png" alt="MacNix" width="170"/>
+</p>
 
-**macOS'u Linux üzerinde sanallaştırır.** Tek USB, tek önyükleme. GPU'su macOS
-tarafından desteklenen makinelerde gerçek GPU passthrough, diğerlerinde çalışan
-yazılım render.
+<h1 align="center">MacNix 2.0</h1>
 
-> Bu sürüm, `vesvese55x/macnix` deposunun canlı ortamda kurulum yapamayan
-> sürümünün **sıfırdan yeniden yazılmış** hâlidir. Neyin neden bozuk olduğu ve
-> nasıl düzeltildiği [`../MACNIX-ANALIZ.md`](../MACNIX-ANALIZ.md) dosyasında.
+<p align="center">
+  <b>macOS'u Linux üzerinde bir sanal makinede çalıştıran, tek USB'lik kurulum sistemi.</b>
+</p>
+
+<p align="center">
+  <a href="#kurulum"><img src="https://img.shields.io/badge/kurulum-rehber-blue?style=for-the-badge" alt="Kurulum"/></a>
+  <a href="#gpu-gerçeği"><img src="https://img.shields.io/badge/GPU-dürüst%20cevap-orange?style=for-the-badge" alt="GPU"/></a>
+  <a href="../../actions"><img src="https://img.shields.io/github/actions/workflow/status/vesvese55x/macnix/build-iso.yml?style=for-the-badge&label=ISO%20derleme" alt="Build"/></a>
+</p>
 
 ---
 
-## Ne değişti (özet)
+## MacNix nedir?
 
-| Alan | Orijinal | MacNix 2.0 |
+MacNix, bilgisayarınızı **macOS için bir hipervizöre** dönüştüren minimal bir
+Debian tabanlı sistemdir. USB'den açılır, Calamares ile diske kurulur, açılışta
+sizi doğrudan **MacNix Kurulum Sihirbazı** karşılar: macOS kurtarma imajını
+indirir, OpenCore yapılandırmasını üretir, QEMU/KVM sanal makinesini hazırlar.
+
+**Ne değildir:**
+
+- ❌ Hackintosh değildir — macOS **gerçek donanımda** değil, sanal makinede çalışır
+- ❌ Dual-boot değildir — GRUB menüsünde Windows/macOS seçimi yoktur
+- ❌ "Her GPU'da tam hız" değildir — aşağıdaki GPU bölümünü okuyun
+
+---
+
+## Ne test edildi, ne edilmedi
+
+Bu bölüm kasıtlı olarak en üstte. MacNix 2.0'ın hangi kısmının gerçekten
+**ölçüldüğünü** hangisinin **henüz denenmediğini** ayırıyoruz.
+
+### ✅ Gerçekten test edildi (QEMU, canlı önyükleme + gerçek kurulum)
+
+| Test | Sonuç |
+|---|---|
+| ISO'nun önyüklenmesi (BIOS + UEFI) | ✅ çekirdek → canlı masaüstü |
+| Otomatik giriş → openbox → Calamares açılışı | ✅ "Welcome to the MacNix 2.0 installer" |
+| Kurulumun diske uygulanması (30 GB, `/dev/vda`) | ✅ 57 626 dosya, fstab, machine-id, kullanıcı |
+| GRUB **UEFI** kurulumu | ✅ `grub-install --target=x86_64-efi` → 0 |
+| GRUB **BIOS** kurulumu | ✅ `grub-install --target=i386-pc` → 0 |
+| UEFI yedek önyükleyici (`\EFI\BOOT\BOOTX64.EFI`) | ✅ boş NVRAM'de bile sistem açılıyor |
+| Kurulu sistemin BIOS'tan açılışı | ✅ GRUB → MacNix sihirbazı |
+| Kurulu sistemin UEFI'den açılışı | ✅ GRUB → MacNix sihirbazı |
+| Statik doğrulama + modül testleri | ✅ 49 denetim / 93 birim testi, 0 hata |
+
+### ❌ Henüz test EDİLMEDİ (dürüstçe)
+
+| Test | Neden |
+|---|---|
+| **macOS'un kurulup açılması** | Test ortamında KVM yok (TCG), macOS kurulumu saatler sürer; Apple imajı ~700 MB indirme gerektirir |
+| **VFIO GPU passthrough** | Test ortamında geçirilecek gerçek GPU yok |
+| **Gerçek donanımda kurulum** | Kullanıcı testi bekliyor |
+| Calamares sihirbazının grafik arayüzüyle sonuna kadar tıklanması | Başsız test ortamında pencere yöneticisi odağı yok; exec aşamasının tamamı ayrıca doğrulandı |
+
+Yani: **kurulum yolu kanıtlanmış, macOS'un kendisi henüz kanıtlanmamış.**
+
+---
+
+## GPU gerçeği
+
+macOS'un kendi grafik sürücüsü **yalnızca belirli AMD kartlar** için vardır.
+MacNix bunu saklamaz; kurulum ekranında ve `macnix-doctor` çıktısında açıkça
+yazar.
+
+| Donanım | macOS'ta hızlandırma | MacNix ne yapar |
 |---|---|---|
-| ISO derleme | live-build + 7 adet `sed` yaması | `debootstrap` + `mksquashfs` + `xorriso` (yamа yok) |
-| Kurulum | `unpackfs` çağrılmıyordu → diske yazmıyordu | Akış düzeltildi, 17 modül `.conf`'u tamamlandı |
-| macOS indirme | Kurulumun ortasında, hata = çökme | İlk açılışta, kaldığı yerden devam eder |
-| OpenCore | OSX-KVM'nin hazır imajı kopyalanıyordu | Donanıma göre sıfırdan üretiliyor (AMD yamaları dahil) |
-| GPU kararı | GPU serisine göre tahmin | 14 ailelik veritabanı + gerçek macOS sürücü bilgisi |
-| Hata durumu | Sessiz bozuk ISO | `macnix-doctor` + `macnix-log --tar` |
-| Grafik yoksa | Kurulum yapılamıyordu | `macnix-tui` metin modu |
+| RX 580 / 570 / 590 (Polaris) | ✅ tam | VFIO passthrough |
+| RX 5500–5700 XT (Navi 10) | ✅ tam | VFIO passthrough |
+| RX 6600–6950 XT (Navi 21/22) | ✅ tam | VFIO passthrough |
+| Vega 56/64, Radeon VII | ✅ tam | VFIO passthrough |
+| **NVIDIA (tümü)** | ❌ sürücü yok | yazılım render |
+| **Intel iGPU (yeni nesil)** | ❌ sürücü yok | yazılım render |
+| **Eski AMD (TeraScale, GCN1-2)** | ❌ sürücü yok | yazılım render |
+| RDNA3 (RX 7000) | ❌ | yazılım render |
+| GPU yok (sunucu) | — | başsız + VNC |
+
+**Cihaz kimliği taklidi (spoof) çözüm değildir:** Apple'ın kextleri kapalı
+kaynaktır ve kartın firmware'ini okur. R7 M340'ı RX 580 gibi göstermek sürücüyü
+yükler ama **siyah ekran** verir. VirGL/VMware SVGA3D/Apple PVGPU yolları da
+bu donanımda Metal sağlamaz.
+
+**Yazılım render modunda ne olur:** macOS açılır, masaüstü/Safari/ofis akıcıdır;
+oyun, Final Cut timeline ve video kodlama yoktur.
 
 ---
 
-## Derleme
+## Kurulum
 
-Gereksinimler (Debian/Ubuntu):
+### 1) ISO'yu indir
 
-```bash
-sudo apt-get install -y debootstrap squashfs-tools xorriso \
-    grub-efi-amd64-bin grub-pc-bin mtools dosfstools isolinux syslinux-common
-```
+[Releases](../../releases) sayfasından `macnix-2.0.0-amd64.iso` ve `.sha256`
+dosyasını alın.
 
 ```bash
-sudo ./build.sh                     # tam ISO
-sudo ./build.sh --stage rootfs      # sadece kök dosya sistemi
-sudo ./build.sh --stage iso         # rootfs hazırsa ISO'yu paketle
-sudo ./build.sh --clean
+sha256sum -c macnix-2.0.0-amd64.iso.sha256
 ```
 
-Değişkenler: `WORK` (çalışma dizini, varsayılan `/data/build`), `OUT` (çıktı,
-`/data/workspace/out`), `DEBIAN_SUITE` (`bookworm`), `MACNIX_JOBS`, `USB_TREE=1`.
-
-Çıktı:
-
-```
-out/macnix-2.0.0-amd64.iso
-out/macnix-2.0.0-amd64.iso.sha256
-out/usb-2.0.0/            # FAT32 USB'ye kopyala-çalıştır ağacı
-```
-
-Yazma:
+### 2) USB'ye yaz (DD modu — Rufus'ta "DD Image" seçin)
 
 ```bash
-sudo dd if=out/macnix-2.0.0-amd64.iso of=/dev/sdX bs=4M status=progress oflag=sync
+sudo dd if=macnix-2.0.0-amd64.iso of=/dev/sdX bs=4M status=progress oflag=sync
 ```
 
-Hibrit ISO: UEFI + BIOS önyükleme aynı imajda.
+> Ventoy'un "ISO modu" canlı medyayı bulamaz; DD modu kullanın.
 
----
+### 3) USB'den aç, sihirbazı izle
 
-## Kurulum akışı
+GRUB menüsü → **MacNix 2.0 — Kurulumu Başlat**. Canlı masaüstü açılır ve
+Calamares kendiliğinden başlar (giriş ekranı görürseniz: `macnix` / `macnix`).
 
-1. USB'den önyükle → GRUB → **"MacNix 2.0 — Kurulumu Başlat"**
-2. Canlı masaüstü açılır, Calamares başlar
-3. İlk ekran **donanım raporudur**: GPU passthrough mu, yazılım render mı
-4. Dil, klavye, disk, kullanıcı
-5. Kurulum → yeniden başlat (USB'yi çıkar)
-6. İlk açılışta **MacNix Kurulum Sihirbazı** → macOS imajını indirir → macOS kurulumu
+Kurulum adımları: dil → **donanım raporu** → bölge/klavye → disk → kullanıcı →
+kur. Donanım raporu ekranı bu makinede macOS'un nasıl çalışacağını
+(passthrough / yazılım render) söyler; **hiçbir uyarı kurulumu engellemez.**
 
-Kurulum sırasında macOS **indirilmez** — bu yüzden ağ hatası kurulumu bozmaz.
+### 4) İlk açılış
+
+`macnix-setup` sihirbazı açılır: macOS kurtarma imajı indirilir, OpenCore
+yapılandırılır, VM diski hazırlanır. Sonra:
+
+```bash
+sudo macnix-vm start
+```
+
+### Gereksinimler
+
+| | En az | Önerilen |
+|---|---|---|
+| CPU | 4 çekirdek, x86-64, VT-x/AMD-V **BIOS'ta açık** | 6+ |
+| RAM | 4 GB | 16 GB |
+| Disk | 25 GB | 80 GB SSD |
+| GPU | herhangi biri (hiç olmasa da olur) | macOS sürücüsü olan AMD kart |
 
 ---
 
 ## Komutlar
 
-| Komut | İş |
-|---|---|
-| `macnix-setup` | Grafik kurulum sihirbazı (ilk açılışta otomatik) |
-| `macnix-install-macos [--step N] [--status]` | macOS hazırlığı: 7 adım, tekrar çalıştırılabilir |
-| `macnix-vm {start\|install\|stop\|status\|console\|shell\|doctor}` | VM yönetimi |
-| `macnix-doctor` | Tanılama: ne eksik, ne yanlış, nasıl düzeltilir |
-| `macnix-gpu-mode {vm\|host\|status}` | GPU'yu VM ↔ host arasında geçir |
-| `macnix-oc {--build\|--check\|--dump-config}` | OpenCore'u üret / denetle |
-| `macnix-assets [--dest DIR]` | OpenCore + kextleri indir |
-| `macnix-fetch-macos --list` | Desteklenen macOS sürümleri |
-| `macnix-log [--tar]` | Tanılama paketi |
-| `macnix-tui` | Metin modu kurulum / kurtarma |
-
----
-
-## Donanım desteği — dürüst tablo
-
-### GPU
-
-| GPU ailesi | macOS sürücüsü | MacNix modu |
-|---|---|---|
-| AMD RDNA 3 (RX 7000) | ✅ Sonoma 14.4+ | **vfio** (90-100%) |
-| AMD RDNA 2 (RX 6000) | ✅ Monterey+ | **vfio** (90-100%) |
-| AMD RDNA 1 (RX 5000) | ✅ Catalina+ | **vfio** |
-| AMD Vega | ✅ High Sierra+ | **vfio** |
-| AMD Polaris (RX 400/500) | ✅ Sierra+ | **vfio** |
-| NVIDIA Kepler (GTX 600/700) | ✅ Big Sur'a kadar | **vfio** (eski macOS) |
-| NVIDIA Maxwell/Pascal+ | ❌ | virtio (yazılım render) |
-| AMD GCN 1.0/1.2 mobil (R7 M340, R5 M330…) | ❌ 10.13'te kesildi | virtio |
-| Intel iGPU | ❌ (VM'de Metal yok) | virtio |
-| GPU yok / sanal makine | ❌ | virtio |
-
-### Yazılım render modunda ne çalışır
-
-✅ macOS masaüstü, Safari, Terminal, dosya işlemleri, App Store (SMBIOS'a bağlı)
-❌ Oyun, Metal, video kodlama, Final Cut, 4K video
-
-### Sistem gereksinimleri
-
-| | Minimum | Önerilen |
-|---|---|---|
-| CPU | VT-x/AMD-V (2 çekirdek) | 6+ çekirdek |
-| RAM | 8 GB | 16 GB+ |
-| Disk | 40 GB | 100 GB+ |
-| GPU | — (yazılım render) | AMD RX 580 / RX 6600+ |
-| BIOS | UEFI | UEFI + IOMMU (AMD-Vi / VT-d) |
-
----
-
-## Kurulum sonrası hata ayıklama
-
 ```bash
-sudo macnix-doctor                 # tanılama
-sudo macnix-vm shell               # üretilecek qemu komutunu göster
-sudo macnix-vm start               # başlat
-sudo macnix-vm console             # VNC ile görüntü
-less /var/lib/macnix/logs/qemu.log
-sudo less /var/log/macnix-firstboot.log
-sudo macnix-log --tar              # her şeyi tek pakete koy
+macnix-doctor          # tanılama; 0 = sorun yok, 1 = uyarı, 2 = kritik
+macnix-setup           # macOS kurulum sihirbazı (GUI)
+macnix-setup --download  # yalnızca macOS imajını indir
+sudo macnix-vm start   # macOS sanal makinesini başlat
+sudo macnix-gpu-mode   # VFIO / yazılım render modu
+macnix-log --tar       # günlük paketi
+sudo macnix-tui        # metin modunda kurulum (X açılmazsa)
 ```
 
-GRUB menüsü: açılışta **SHIFT**. Çekirdek kayıtları için menüdeki
-"Çekirdek Kayıtlarını Göster" seçeneği.
+---
+
+## Nasıl derlenir
+
+```bash
+sudo apt-get install -y debootstrap squashfs-tools xorriso \
+  grub-efi-amd64-bin grub-pc-bin mtools dosfstools isolinux syslinux-utils
+
+sudo WORK=/tmp/build OUT=$PWD/out ./build.sh          # tam derleme (~15 dk)
+bash tools/validate.sh                                 # statik denetim
+python3 tools/test-modules.py                          # Calamares modül testleri
+```
+
+GitHub Actions her push'ta derler ve `latest` Release'ine ekler
+(`.github/workflows/build-iso.yml`).
 
 ---
 
-## Bilinen sınırlar
+## Mimari
 
-- macOS imajı ISO'ya gömülü **değil** (boyut + lisans). İlk açılışta indirilir.
-- AirDrop / Handoff / Sidecar / Apple DRM **çalışmaz**.
-- Thunderbolt passthrough **desteklenmez**.
-- Tek GPU (muxless laptop) senaryosunda macOS açıkken Linux görüntü veremez;
-  VNC/SSH yedek yolu vardır.
-- macOS, Apple'ın yazılım lisansına tabidir.
+```
+ISO (hibrit: BIOS + UEFI)
+└── canlı sistem (Debian bookworm + squashfs)
+    ├── macnix-live.service → medya keşfi, izin onarımı, otomatik giriş
+    ├── openbox + Calamares (gözcülü) → kurulum sihirbazı
+    └── Calamares exec:
+        partition → mount → shellprocess (medya) → unpackfs → machineid
+        → fstab → locale → keyboard → users → displaymanager → networkcfg
+        → hwclock → macnix-gpu-detect → macnix-gpu-config → bootloader
+        → macnix-efi-fallback → umount
 
-## Teşekkür
+kurulu sistem
+├── /etc/macnix/{install-plan.json,vm.conf,smbios.json,vfio.conf}
+├── macnix-firstboot.service → macnix-setup (macOS imajı + OpenCore + VM disk)
+└── macnix-vm.service → QEMU/KVM (VFIO veya virtio-gpu)
+```
 
-[OpenCorePkg](https://github.com/acidanthera/OpenCorePkg) ·
-[OSX-KVM](https://github.com/kholia/OSX-KVM) ·
-[AMD_Vanilla](https://github.com/AMD-OSX/AMD_Vanilla) ·
-[Lilu](https://github.com/acidanthera/Lilu) / [VirtualSMC](https://github.com/acidanthera/VirtualSMC) /
-[WhateverGreen](https://github.com/acidanthera/WhateverGreen) / [AppleALC](https://github.com/acidanthera/AppleALC) ·
-[Calamares](https://calamares.io/)
+---
 
-macOS, Apple Inc.'in ticari markasıdır. Bu proje eğitim amaçlıdır.
+## Lisans ve yasal not
+
+macOS, Apple Inc.'in telif hakkıyla korunan yazılımıdır. Apple'ın yazılım
+lisansı macOS'un **yalnızca Apple markalı donanımda** çalıştırılmasına izin
+verir. MacNix yalnızca bir sanallaştırma/otomasyon aracıdır; macOS imajını
+dağıtmaz, indirmez veya lisanslamaz. Kullanım sorumluluğu kullanıcıya aittir.
+
+Kod: MIT (bkz. `LICENSE`).
