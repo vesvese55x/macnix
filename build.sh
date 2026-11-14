@@ -347,10 +347,22 @@ stage_overlay() {
     echo 'macnix:macnix' | chpasswd
     echo 'root:root' | chpasswd" || warn "kullanıcı oluşturma uyarı"
 
+  # ── sudoers: DOSYA ADI SIRASI KRİTİK ────────────────────────────────────
+  # sudo /etc/sudoers.d/* dosyalarını ALFABETİK okur; aynı komut için SON
+  # eşleşen kural kazanır. Calamares kurulum sırasında 10-installer dosyasını
+  # "%sudo ALL=(ALL:ALL) ALL" ile yazıyor. Kurallarımız ondan ÖNCE okunursa
+  # NOPASSWD ezilir ve macnix-setup içindeki her "sudo -n" çağrısı
+  #   "sudo: a password is required"
+  # hatasıyla düşer (canlı testte birebir yakalandı, 2026-11-14).
+  # Bu yüzden dosya adları 99- önekli: 10-installer'dan SONRA okunurlar.
+  #   • 99-macnix    → yalnızca MacNix araçları için NOPASSWD (kurulu sistem)
+  #   • 99-macnix-live → canlı ortamda tam NOPASSWD (010-live'dan taşındı)
   install -d -m 0750 "$ROOTFS/etc/sudoers.d"
-  install -m 0440 "${ROOT}/overlay/etc/sudoers.d/020-macnix" "$ROOTFS/etc/sudoers.d/020-macnix"
-  printf 'macnix ALL=(ALL) NOPASSWD: ALL\n' > "$ROOTFS/etc/sudoers.d/010-live"
-  chmod 0440 "$ROOTFS/etc/sudoers.d/010-live"
+  install -m 0440 "${ROOT}/overlay/etc/sudoers.d/99-macnix" "$ROOTFS/etc/sudoers.d/99-macnix"
+  printf 'macnix ALL=(ALL) NOPASSWD: ALL\n' > "$ROOTFS/etc/sudoers.d/99-macnix-live"
+  chmod 0440 "$ROOTFS/etc/sudoers.d/99-macnix-live"
+  # Eski adlar kalırsa (yükseltme/önbellek) sudo karışabilir: temizle
+  rm -f "$ROOTFS/etc/sudoers.d/020-macnix" "$ROOTFS/etc/sudoers.d/010-live"
 
   # OpenCore + kextleri ISO'ya göm: ilk açılışta internet gerekmesin
   if [[ "${BUNDLE_ASSETS:-1}" == "1" ]]; then
