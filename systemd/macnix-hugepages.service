@@ -1,0 +1,12 @@
+[Unit]
+Description=MacNix 2MB hugepage rezervasyonu
+After=multi-user.target
+Before=macnix-vm.service
+
+[Service]
+Type=oneshot
+RemainAfterExit=yes
+ExecStart=/bin/sh -c 'test -f /sys/kernel/mm/transparent_hugepage/enabled && echo always > /sys/kernel/mm/transparent_hugepage/enabled || true'
+
+[Install]
+WantedBy=multi-user.target
