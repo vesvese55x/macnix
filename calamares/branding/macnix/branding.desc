@@ -31,12 +31,16 @@ windowExpanding:         normal
 windowSize:              1000px,700px
 windowPlacement:         center
 
-sidebar:                 qml
-navigation:              qml
+# NOT: QML yan menü/alt menü DENENDİ ve canlı Calamares 3.3.14 çalıştırmasında
+# yan menü paneli kırpıldı (metinler sol kenardan taştı). Yerleşik (C++) menü
+# + stylesheet.qss karanlık teması güvenilir sonuç veriyor → varsayılan menüler.
+# (calamares-sidebar.qml / calamares-navigation.qml repoda duruyor.)
 
 style:
     SidebarBackground:        "#0B0C10"
     SidebarText:              "#8E8E93"
-    SidebarTextSelect:        "#FFFFFF"
-    SidebarTextHighlight:     "#0A84FF"
+    # NOT: "SidebarTextSelect" ve "SidebarTextHighlight" Calamares 3.3'te
+    # geçerli style anahtarı DEĞİL (3.3.14 canlı çalıştırmada uyarı verdi:
+    # "Unknown branding *style* entry"). Kaldırıldı — seçili adımın vurgusu
+    # calamares-sidebar.qml içinde doğrudan renklendiriliyor.
     SidebarBackgroundCurrent: "#1C1C1E"
