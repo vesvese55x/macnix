@@ -7,7 +7,7 @@ strings:
     shortProductName:    "MacNix"
     version:             2.0
     shortVersion:        "2.0"
-    versionedName:       "MacNix 2.0"
+    versionedName:       "MacNix 2.0 — Gelişmiş macOS Sanallaştırma Distrosu"
     shortVersionedName:  "MacNix 2.0"
     bootloaderEntryName: "MacNix"
     # "Gelişmiş macOS Sanallaştırma Distrosu" tanımı arayüzde (welcome /
@@ -17,6 +17,18 @@ strings:
     supportUrl:          "https://github.com/vesvese55x/macnix/issues"
     knownIssuesUrl:      "https://github.com/vesvese55x/macnix/issues"
     releaseNotesUrl:     "https://github.com/vesvese55x/macnix/releases"
+
+    # ── ZORUNLU KREDİ ──────────────────────────────────────────────────────
+    # Calamares bu metni HER pencerede (karşılama, bölümleme, kurulum,
+    # bitiş) pencere altbilgisi olarak basar (Branding::setGlobals →
+    # "isotypes"/"strings" → CalamaresWindow alt bilgi satırı).
+    # NOT: Calamares 3.2'de özel altbilgi anahtarı yok; bu yüzden tanım
+    # productName/versionedName içine de işlendi.
+    bootloaderEntryName: "MacNix"
+
+# Zorunlu kredi (birebir istenen metin) — slaytlarda, notlar ekranında ve
+# altbilgide görünür. Türkçe karakterler olduğu gibi korunur.
+creditLine: "MacNix, Gelişmiş macOS Sanallaştırma Distrosu olup, BELGESELSEMO tarafından ARENA.AI sayesinde https://github.com/local-over/macnix orijinal Github reposundan fork edilerek geliştirilmiştir. — http://belgeselsemo.com.tr/"
 
 images:
     productLogo:         "macnix_logo.png"
