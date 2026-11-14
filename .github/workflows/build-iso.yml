@@ -151,5 +151,8 @@ jobs:
             out/*.sha256
           draft: false
           prerelease: false
-          env:
-            GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      # NOT: `env` blokları adım (step) düzeyinde olmalı; `with:` içine
+      # yazılırsa GitHub'ın şema doğrulayıcısı reddeder:
+      #   "failed to parse workflow: A mapping was not expected"
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
