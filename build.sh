@@ -530,39 +530,50 @@ finalize_calamares_config() {
   local d="$ROOTFS/etc/calamares"
   install -d "$d/modules" "$d/branding/macnix"
 
-  # qmlFilename UZANTISIZ olmalı: Calamares ".qml" ekini kendisi ekler.
-  # Her iki adı da yaz (Calamares <modül>.conf ya da <modül>.py arar).
-  local q
-  for q in welcomeq finishedq; do
-    [[ -f "${ROOT}/calamares/module-conf/${q}.conf" ]] && \
-      install -m 0644 "${ROOT}/calamares/module-conf/${q}.conf" "$d/modules/${q}.conf"
-    [[ -f "${ROOT}/calamares/module-conf/${q}.py" ]] && \
-      install -m 0644 "${ROOT}/calamares/module-conf/${q}.py"   "$d/modules/${q}.py"
-  done
-  install -m 0644 "${ROOT}/calamares/module-conf/notesqml.conf" "$d/modules/notesqml.conf"
-
-  # marka dosyaları (QML + görseller) — QML paneli kullanılmıyor (varsayılan menü)
+  # modül yapılandırmaları: TAMAMI repodan, tek tek
   local f
+  for f in "${ROOT}"/calamares/module-conf/*.conf; do
+    [[ -f "$f" ]] || continue
+    install -m 0644 "$f" "$d/modules/$(basename "$f")"
+  done
+
+  # marka dosyaları (sadece marka: QML panel yok, slideshow QML var)
   for f in "${ROOT}"/calamares/branding/macnix/*; do
     [[ -f "$f" ]] || continue
     install -m 0644 "$f" "$d/branding/macnix/$(basename "$f")"
   done
 
-  # settings.conf: @MULTIARCH@ yer tutucusu + welcomeq/finishedq sırası
+  # slideshow QML modülü: Calamares'in kendi slideshow QML'i yoksa
+  # show.qml "module calamares.slideshow is not installed" ile yüklenmez.
+  # Kaynak pakette geleni kopyala (varsa).
+  local sl
+  for sl in /usr/share/calamares/qml/calamares/slideshow /usr/lib/*/calamares/qml/calamares/slideshow; do
+    [[ -d "$sl" ]] || continue
+    install -d "$d/qml/calamares/slideshow"
+    cp -a "$sl/." "$d/qml/calamares/slideshow/"
+    ok "slideshow QML modülü kopyalandı: $sl"
+    break
+  done
+
+  # marka QML dosyaları GEREKMİYOR (C++ modülleri kullanılıyor) ama repoda
+  # duruyorlar; ISO'ya da gidiyorlar (ileride kullanım / incelenebilirlik).
+
+  # settings.conf: @MULTIARCH@ yer tutucusu
   sed "s/@MULTIARCH@/${MACNIX_MULTIARCH:-$(gcc -dumpmachine)}/g" \
       "${ROOT}/calamares/settings.conf" > "$d/settings.conf"
   chmod 0644 "$d/settings.conf"
 
-  # ── Doğrulama: yanlış içerik derlemeyi durdurur (sessiz kalmaktansa) ────
+  # ── Doğrulama (yanlış içerik sessizce geçmesin) ─────────────────────────
   local err=0
-  grep -q 'qmlFilename: "welcome"'   "$d/modules/welcomeq.conf"  || { warn "welcomeq.conf: qmlFilename uzantılı!"; err=1; }
-  grep -q 'qmlFilename: "finishedq"' "$d/modules/finishedq.conf" || { warn "finishedq.conf: qmlFilename uzantılı!"; err=1; }
-  grep -q 'qmlFilename: "notes"'     "$d/modules/notesqml.conf"  || { warn "notesqml.conf: qmlFilename yok/uzantılı"; err=1; }
-  grep -q '^sidebar:.*qml'           "$d/branding/macnix/branding.desc" && \
-      warn "branding.desc: QML yan menü etkin (kırpılma riski)"
-  grep -q 'bgFill'                   "$d/branding/macnix/welcome.qml"   || { warn "welcome.qml: opak zemin yok"; err=1; }
-  grep -q 'bgFill'                   "$d/branding/macnix/finishedq.qml" || { warn "finishedq.qml: opak zemin yok"; err=1; }
-  [[ -f "$d/branding/macnix/notes.qml" ]] || { warn "notes.qml marka dizininde yok"; err=1; }
+  grep -qE '^[[:space:]]*- welcome([[:space:]]|$)'  "$d/settings.conf" || { warn "settings.conf: welcome (C++) yok"; err=1; }
+  grep -qE '^[[:space:]]*- finished([[:space:]]|$)' "$d/settings.conf" || { warn "settings.conf: finished yok"; err=1; }
+  # QML view modülleri canlı VM'de yüklenemedi → akışta OLMAMALI
+  if grep -qE '^[[:space:]]*- (welcomeq|finishedq|notesqml)([[:space:]]|$)' "$d/settings.conf"; then
+    warn "settings.conf: QML view modülü akışta (canlı VM'de 'Loading failed' riski)"; err=1
+  fi
+  grep -q 'slideshow:'        "$d/branding/macnix/branding.desc" || { warn "branding.desc: slideshow yok"; err=1; }
+  [[ -f "$d/branding/macnix/show.qml" ]] || { warn "show.qml yok"; err=1; }
+  [[ -d "$d/qml/calamares/slideshow" ]] || warn "slideshow QML modülü bulunamadı (slaytlar boş kalabilir)"
   (( err == 0 )) && ok "Calamares yapılandırması son hâli yazıldı ve doğrulandı"
 }
 
