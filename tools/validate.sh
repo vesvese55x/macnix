@@ -120,6 +120,19 @@ ALIASES = {  # settings.conf'taki ad -> module-conf altındaki dosya adı
     "notesqml": "notesqml.py",
 }
 used = set(re.findall(r"^\s{6,}-\s*([a-z][a-z0-9_-]+)\s*$", body, re.M))
+# İSTİSNA: yerleşik Calamares modülleri (welcome, locale, license, finished...)
+# Calamares paketiyle gelir; module-conf altında yapılandırma dosyası ZORUNLU
+# değildir (varsayılanlarıyla çalışırlar). Yalnızca MacNix'e özel / özel
+# yapılandırma gerektiren modüller için dosya arıyoruz.
+BUILTIN = {"welcome", "finished", "license", "locale", "keyboard", "partition",
+           "users", "summary", "mount", "unpackfs", "machineid", "fstab",
+           "localecfg", "displaymanager", "networkcfg", "hwclock",
+           "bootloader", "umount", "shellprocess"}
+used -= BUILTIN
+# MacNix'e özel PYTHON JOB modülleri (calamares/modules/<ad>/main.py) kendi
+# yapılandırmalarını module.desc/besides taşır; module-conf altında .conf
+# aramak yanlış pozitif üretiyordu.
+used -= {m for m in used if os.path.isdir(f"calamares/modules/{m}")}
 for mod in sorted(used):
     names = [ALIASES.get(mod, mod + s) for s in CONF_SUFFIXES]
     names.append(ALIASES.get(mod, ""))
