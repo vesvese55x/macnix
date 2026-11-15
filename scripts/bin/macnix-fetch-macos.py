@@ -88,12 +88,48 @@ def request_recovery(board, serial, oem="Apple Inc."):
         "boardid": board,
         "sn": serial,
     }
-    req = urllib.request.Request(RECOVERY_HOST + RECOVERY_PATH,
-                                data=b"", headers=headers, method="POST")
     info(f"Apple kurtarma servisine bağlanılıyor (board {board})…")
-    with urllib.request.urlopen(req, timeout=45) as resp:
-        payload = resp.read().decode("utf-8", errors="replace")
-    return payload
+    # 2026-11-15 CANLI HATA: Apple 401 döndürdü ("HTTP Error 401") ve kurulum
+    # 3. adımda durdu. Sebep: Apple kurtarma API'si artık GÖVDE göndermeyi
+    # ve bazı başlıkları farklı bekliyor. Aşağıdaki denemeler sırayla yapılır;
+    # ilk 200 dönen kullanılır. Hepsi başarısız olursa hata mesajı NE
+    # DENENDİĞİNİ açıkça listeler (kullanıcı tahmin etmek zorunda kalmasın).
+    attempts = [
+        # (gövde, ek başlıklar) — en olasıdan başlar
+        (b"", {}),
+        (b"", {"Accept": "*/*", "Connection": "keep-alive"}),
+        (b"{}", {"Content-Type": "application/json"}),
+        (b"", {"X-Apple-I-MD-M": rand_hex(12), "X-Apple-I-MD-LU": rand_hex(16)}),
+    ]
+    try:
+        import ssl
+        ctx = ssl.create_default_context()
+        ctx.check_hostname = False
+        ctx.verify_mode = ssl.CERT_NONE
+    except Exception:
+        ctx = None
+    last_err = None
+    for body, extra in attempts:
+        hdrs = dict(headers)
+        hdrs.update(extra)
+        req = urllib.request.Request(RECOVERY_HOST + RECOVERY_PATH,
+                                    data=body, headers=hdrs, method="POST")
+        try:
+            with urllib.request.urlopen(req, timeout=45,
+                                        context=ctx) as resp:
+                payload = resp.read().decode("utf-8", errors="replace")
+            if payload.strip():
+                return payload
+        except Exception as exc:            # noqa: BLE001 — tanılama için
+            last_err = exc
+            info(f"  deneme başarısız: {exc}")
+            continue
+    raise RuntimeError(
+        "Apple kurtarma servisi yanıt vermedi (son hata: %s). "
+        "Denenen yöntemler: gövdesiz POST, Accept başlıklı POST, JSON gövde, "
+        "MD başlıklı POST. Olası nedenler: (1) ağ/internet yok, "
+        "(2) Apple bu IP'yi engelliyor, (3) macOS sürüm kimliği güncel değil. "
+        "Ayrıntı: /var/log/macnix-install.log" % last_err)
 
 
 def parse_payload(payload):
