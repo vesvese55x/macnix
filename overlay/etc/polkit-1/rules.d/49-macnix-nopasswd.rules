@@ -1,0 +1,16 @@
+/* MacNix 2.0 — "parola gerekli" uyarısını kökten kaldırır.
+ *
+ * NEDEN: Calamares kurulumunda parola HİÇ belirlenmiyor (users.conf: boş
+ * parola). Debian'ın polkit varsayılanı yönetici işlemleri için parola
+ * ister; parola boş olduğu için pencere geçilemez ve kullanıcı çıkmazda
+ * kalır. 2026-11-15'te canlı olarak bildirildi.
+ *
+ * ÇÖZÜM: yerel, aktif oturumdaki tüm kullanıcılara yetki ver. Bu, ev
+ * kullanıcısı tek kişilik dağıtım için doğru tercih: MacNix'in tasarım
+ * kuralı "hiçbir adımda parola sorulmaz".
+ */
+polkit.addRule(function (action, subject) {
+    if (subject.isInGroup("sudo") || subject.isInGroup("users")) {
+        return polkit.Result.YES;
+    }
+});
