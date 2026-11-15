@@ -344,6 +344,18 @@ def test_debian_compat():
     # could not be loaded"; Debian bookworm'da da yalnız notesqml var).
     # Bilgilendirme görevi slaytlara (show.qml) ve karşılama metnine verildi.
     check("'notes' modülü kullanılmıyor (Calamares'te yok)", "notes" not in flat, str(flat))
+    check("license adımı var (zorunlu kredi ekranı)", "license" in flat)
+    # LIFELINE: yan menüye sahte adım adları basılmasını önleyen kural —
+    # sequence içinde "- " ile başlayan her satır gerçek bir modül adı olmalı.
+    seqraw = open(os.path.join(ROOT, "calamares", "settings.conf"),
+                  encoding="utf-8").read()
+    seqpart = seqraw[seqraw.index("sequence:"):seqraw.index("branding:")]
+    bad = [l.strip() for l in seqpart.splitlines()
+           if l.strip().startswith("- ")
+           and l.strip()[2:].split("#")[0].strip() not in
+           (set(flat) | {"show:", "exec:"})]
+    check("sequence'te açıklama satırı YOK (sahte adım adı üretmez)",
+          not bad, f"şüpheli satırlar: {bad}")
     check("notesqml kullanılmıyor (QML yüklenemedi)", "notesqml" not in flat)
 
     # 3) instances YALNIZCA gerçekten kullanılıyorsa tanımlanmalı.
