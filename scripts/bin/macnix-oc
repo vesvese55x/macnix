@@ -205,28 +205,94 @@ gen_config "$EFI/OC/config.plist" || die "config.plist üretilemedi"
 check_config "$EFI/OC/config.plist" || warn "config denetiminde uyarı var (yukarıda)"
 
 # 5) FAT32 EFI imajı → qcow2
+# DİKKAT (2026-11-15, gerçek önyükleme testiyle bulundu):
+#   • FAT32 imajında mtools uzun dosya adlarını (config.plist, OpenCore.efi)
+#     bazen yazamıyor → "no match for target". FAT16'da sorunsuz çalışıyor
+#     ve ESP için fazlasıyla yeterli (64 MB'a ~2600 kext sığar).
+#   • Alt dizinler mmd ile AÇIKÇA oluşturulmalı; aksi hâlde kext alt
+#     dizinleri (Contents/MacOS) kopyalanamıyor.
 IMG="$WORK/opencore.img"
 SIZE_KB=65536   # 64 MB — bolca yer (kext + sürücü + yedek)
 dd if=/dev/zero of="$IMG" bs=1k count="$SIZE_KB" status=none
-mkfs.vfat -F 32 -n OPENCORE "$IMG" >/dev/null
+FAT_TYPE=16
+if ! mkfs.vfat -F "$FAT_TYPE" -n OPENCORE "$IMG" >/dev/null 2>&1; then
+  # 16 desteklenmezse 12'ye düş (çok küçük imajlarda)
+  FAT_TYPE=12
+  mkfs.vfat -F "$FAT_TYPE" -n OPENCORE "$IMG" >/dev/null || die "FAT imajı oluşturulamadı"
+fi
 export MTOOLS_SKIP_CHECK=1
+
+# Tüm dizinleri mmd ile oluştur
 mmd -i "$IMG" ::/EFI ::/EFI/BOOT ::/EFI/OC
 for d in Kexts Drivers ACPI Tools Resources; do
   mmd -i "$IMG" "::/EFI/OC/$d"
-  if [[ -n "$(ls -A "$EFI/OC/$d" 2>/dev/null)" ]]; then
-    mcopy -s -i "$IMG" "$EFI/OC/$d"/* "::/EFI/OC/$d/"
-  fi
 done
-mcopy -i "$IMG" "$EFI/OC/OpenCore.efi" "::/EFI/OC/"
-mcopy -i "$IMG" "$EFI/OC/config.plist" "::/EFI/OC/"
+# Kext paketleri: <ad>.kext/Contents/MacOS
+for k in "$EFI/OC/Kexts"/*.kext; do
+  [[ -d "$k" ]] || continue
+  base="$(basename "$k")"
+  mmd -i "$IMG" "::/EFI/OC/Kexts/$base" \
+                "::/EFI/OC/Kexts/$base/Contents" \
+                "::/EFI/OC/Kexts/$base/Contents/MacOS" 2>/dev/null || true
+done
+
+# Dosyaları tek tek kopyala (dizin adlarını kendimiz açtığımız için güvenli)
+copy_tree() {
+  local src="$1" dst="$2" ok=0 skip=0
+  while IFS= read -r -d '' f; do
+    rel="${f#$src/}"
+    if mcopy -i "$IMG" "$f" "::/$dst/$rel" 2>/dev/null; then
+      ok=$((ok + 1))
+    else
+      skip=$((skip + 1))
+    fi
+  done < <(find "$src" -type f -print0)
+  printf '%s%d%s' "$C_OK" "$ok" "$C_R"
+  (( skip )) && printf ' (%d atlandı)' "$skip"
+}
+ok "Kextler: $(copy_tree "$EFI/OC/Kexts" "EFI/OC/Kexts")"
+ok "Sürücüler: $(copy_tree "$EFI/OC/Drivers" "EFI/OC/Drivers")"
+ok "ACPI: $(copy_tree "$EFI/OC/ACPI" "EFI/OC/ACPI")"
+for f in OpenCore.efi config.plist; do
+  mcopy -i "$IMG" "$EFI/OC/$f" "::/EFI/OC/$f" || die "$f ESP'ye yazılamadı"
+done
 [[ -f "$EFI/OC/Bootstrap.efi" ]] && mcopy -i "$IMG" "$EFI/OC/Bootstrap.efi" "::/EFI/OC/" || true
-mcopy -i "$IMG" "$EFI/BOOT/BOOTx64.efi" "::/EFI/BOOT/BOOTx64.efi"
-ok "FAT imajı dolduruldu ($(du -h "$IMG" | cut -f1))"
+mcopy -i "$IMG" "$EFI/BOOT/BOOTx64.efi" "::/EFI/BOOT/BOOTx64.efi" || die "BOOTx64.efi yazılamadı"
+
+# ── İçerik doğrulaması: ESP'de gerçekten ne var? ──────────────────────────
+verify_esp() {
+  local need=(EFI/BOOT/BOOTx64.efi EFI/OC/OpenCore.efi EFI/OC/config.plist
+              EFI/OC/Drivers/OpenRuntime.efi)
+  local eksik=0
+  for f in "${need[@]}"; do
+    if ! mdir -i "$IMG" "::/$f" >/dev/null 2>&1; then
+      warn "ESP'de EKSİK: $f"; eksik=1
+    fi
+  done
+  (( eksik )) && die "ESP eksik — OpenCore önyüklenemez"
+  ok "ESP doğrulandı: BOOTx64 + OpenCore.efi + config.plist + OpenRuntime"
+}
+verify_esp
+ok "FAT${FAT_TYPE} imajı dolduruldu ($(du -h "$IMG" | cut -f1))"
 
 mkdir -p "$OC_OUT"
 qemu-img convert -f raw -O qcow2 "$IMG" "$OC_OUT/OpenCore.qcow2"
-qemu-img resize "$OC_OUT/OpenCore.qcow2" 64M >/dev/null 2>&1 || true
 ok "OpenCore.qcow2: $OC_OUT/OpenCore.qcow2 ($(du -h "$OC_OUT/OpenCore.qcow2" | cut -f1))"
+
+# ── GPT'li ESP imajı (UEFI firmware'in tanıdığı biçim) ────────────────────
+# DİKKAT (canlı test): Ham FAT imajını disk olarak vermek UEFI'de boot
+# edilebilir bölüm olarak görünmüyordu. GPT + ESP bayraklı bölüm şart.
+if command -v parted >/dev/null 2>&1; then
+  ESP_GPT="$OC_OUT/OpenCore-ESP.img"
+  dd if=/dev/zero of="$ESP_GPT" bs=1M count=64 status=none
+  parted -s "$ESP_GPT" mklabel gpt \
+    mkpart ESP fat16 1MiB 63MiB set 1 esp on >/dev/null 2>&1 && {
+    dd if="$IMG" of="$ESP_GPT" bs=1M seek=1 conv=notrunc status=none
+    ok "GPT/ESP imajı: $ESP_GPT"
+  } || warn "GPT ESP imajı oluşturulamadı — ham FAT imajı kullanılacak"
+else
+  warn "parted yok — GPT ESP imajı atlandı (apt install parted)"
+fi
 
 # 6) Denetim dosyalarını da bırak (elle incelemek için)
 mkdir -p "$OC_OUT/EFI"
