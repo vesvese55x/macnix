@@ -560,6 +560,7 @@ def test_debian_compat():
     check("macnix-assets: 3 denemeli indirme + yerel kext önbelleği",
           "denemesi" in asst and "KEXT_CACHE" in asst)
 
+
     # 10d) PANEL (macnix-setup) — modern + taşınabilir/kapanabilir terminal
     #   2026-11-15 kullanıcı isteği: "terminal modern olsun, hareket ettirilebilir,
     #   kapanabilir, tekrar açılabilir olsun; sabit durup kullanımı engelliyor."
@@ -590,6 +591,11 @@ def test_debian_compat():
     check("macnix-vm: -cpu host yalnızca KVM modunda",
           'if [[ "$QEMU_ACCEL" == "kvm" ]]; then' in vm and "-cpu host,kvm=on" in vm)
 
+    fb2 = open(os.path.join(ROOT, "scripts/firstboot.sh"), encoding="utf-8").read()
+    check("firstboot: KVM yoksa masaüstüne uyarı bırakıyor (dürüst beklenti)",
+          "MacNix-KVM-UYARI.txt" in fb2 and "macnix-vm accel" in fb2)
+    check("macnix-vm: 'accel' komutu iç içe VM teşhisi veriyor",
+          "ExposeVirtualizationExtensions" in vm and "host-passthrough" in vm)
     # 10g) TEŞHİS + PERFORMANS (2026-11-15)
     doc = open(os.path.join(ROOT, "scripts/bin/macnix-doctor"), encoding="utf-8").read()
     check("doctor: OpenCore seri günlüğünü yorumluyor (nerede durdu)",
