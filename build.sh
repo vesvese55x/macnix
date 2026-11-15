@@ -447,10 +447,11 @@ stage_chroot_setup() {
 en_US.UTF-8 UTF-8
 tr_TR.UTF-8 UTF-8
 EOF
-  # Canlı ortamın varsayılan dili: Türkçe. Calamares arayüzü de bu locale ile
-  # Türkçe açılır (masaüstü düğmeleri "İleri/Geri/Bitir"). Kurulumda kullanıcı
-  # dil ekranından değiştirebilir; kurulu sistemde seçtiği dil geçerli olur.
-  printf 'LANG=tr_TR.UTF-8\nLANGUAGE=tr_TR:tr\n' > "$ROOTFS/etc/default/locale"
+  # Canlı ortamın varsayılan dili: İNGİLİZCE (kullanıcı isteği, 2026-11-15).
+  # Calamares arayüz dili bu locale'den gelir; İngilizce evrensel varsayılan.
+  # Kurulumun İLK EKRANINDA dil listesi var — kullanıcı istediği dili seçer
+  # (Türkçe dahil: tr_TR.UTF-8 locale.gen'de üretiliyor).
+  printf 'LANG=en_US.UTF-8\nLANGUAGE=en_US:en\n' > "$ROOTFS/etc/default/locale"
   chroot_run "locale-gen" >/dev/null 2>&1 || true
 
   install -d "$ROOTFS/etc/initramfs-tools/conf.d" "$ROOTFS/etc/initramfs-tools/hooks"
