@@ -234,6 +234,36 @@ if [[ ! -d /var/lib/macnix/assets/opencore/OC ]]; then
       >> /var/log/macnix-assets.log 2>&1 & ) || true
 fi
 
+# ── 5b. KVM hızlandırma denetimi (performans + dürüst uyarı) ───────────────
+# macOS VM'i KVM olmadan da açılır ama 10-20× yavaş olur. Kullanıcı bunu
+# "macOS açılmıyor" sanmasın diye ilk açılışta masaüstünde bir kez bilgi verilir.
+if [[ ! -e /dev/kvm ]]; then
+  log "UYARI: /dev/kvm yok — macOS yazılım emülasyonunda çalışacak (yavaş)"
+  if [[ -d /home/$TARGET_USER/Desktop ]]; then
+    cat > "/home/$TARGET_USER/Desktop/MacNix-KVM-UYARI.txt" <<'EOT'
+MacNix: hızlandırma uyarısı
+===========================
+
+Bu bilgisayarda /dev/kvm bulunamadı. macOS, QEMU'nun yazılım emülasyonu (TCG)
+ile çalışacak: açılır ama 10-20 kat yavaş olur ve kurulum saatler sürebilir.
+
+Neden? İki olasılık:
+  1) BIOS/UEFI'de CPU sanallaştırma kapalı (Intel VT-x / AMD SVM)
+  2) Bu Linux zaten bir sanal makine içinde çalışıyor ve ana makinede
+     "nested virtualization" kapalı.
+
+Ne yapmalı?  Terminalde:   sudo macnix-vm accel
+Bu komut size özel, adım adım ne yapılacağını yazar.
+
+Not: KVM açık olduğunda macnix-vm otomatik olarak "-cpu host" kullanır ve
+macOS tam hızda çalışır; hiçbir ayarı elle değiştirmeniz gerekmez.
+EOT
+    chown "$TARGET_USER":"$TARGET_USER" \
+      "/home/$TARGET_USER/Desktop/MacNix-KVM-UYARI.txt" 2>/dev/null || true
+    log "masaüstüne KVM uyarı dosyası bırakıldı"
+  fi
+fi
+
 # ── 6. Tanılama özeti günlüğe ──────────────────────────────────────────────
 /usr/local/bin/macnix-doctor >> "$LOG" 2>&1 || true
 
