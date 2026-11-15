@@ -518,6 +518,24 @@ def test_debian_compat():
     check("build.sh grub hedeflerini doğruluyor",
           "x86_64-efi i386-pc" in build)
 
+    # 10a) macOS İNDİRME PROTOKOLÜ (2026-11-15 canlı hata: HTTP 401)
+    #   Apple, /InstallationPayload/RecoveryImage için önce ana sayfadan
+    #   session çerezi almayı ZORUNLU kılıyor; ayrıca gövde
+    #   "anahtar=değer" satırları biçiminde ve indirme başlığı
+    #   "Cookie: AssetToken=..." olmalı (OpenCorePkg/macrecovery ile aynı).
+    fm = open(os.path.join(ROOT, "scripts/bin/macnix-fetch-macos.py"),
+              encoding="utf-8").read()
+    check("macOS indirme: Apple OTURUM çerezi alınıyor (401'in sebebi)",
+          "def get_session(" in fm and "session=" in fm)
+    check("macOS indirme: gövde 'anahtar=değer' satırları biçiminde",
+          "join(" in fm and '"cid"' in fm and '"bid"' in fm and "%s=%s" in fm)
+    check("macOS indirme: Cookie: AssetToken=<AT> (macrecovery ile aynı)",
+          "AssetToken=" in fm)
+    check("macOS indirme: chunklist ile bütünlük doğrulaması",
+          "def verify_chunklist_image(" in fm and "CNKL" in fm)
+    check("macOS indirme: Apple imajı için UDIF kuyruk (koly) kontrolü",
+          "koly" in fm and "tail" in fm)
+
     # 10b) PAROLA SORULMASIN — 2026-11-15 canlı hata regresyon testleri
     #   (a) firstboot servisi ETKİNLEŞTİRİLMELİ: edilmediği için parola
     #       kaldırma/sudoers onarımı hiç çalışmıyordu.
