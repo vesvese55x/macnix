@@ -694,6 +694,8 @@ def test_debian_compat():
           "grub-mkimage -O x86_64-efi" in bld and "grub-mkstandalone --format" not in bld)
     check("build.sh: gömülü cfg ESP'ye /EFI/BOOT/grub.cfg olarak yazılıyor",
           "::/EFI/BOOT/grub.cfg" in bld)
+    check("build.sh: grub.cfg'nin insmod ettiği modüller gömülü (png/jpeg/gfxmenu)",
+          " png " in bld and " jpeg " in bld and "gfxmenu" in bld)
 
     # 10d) PANEL (macnix-setup) — modern + taşınabilir/kapanabilir terminal
     #   2026-11-15 kullanıcı isteği: "terminal modern olsun, hareket ettirilebilir,
