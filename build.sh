@@ -688,10 +688,15 @@ build_efi() {
   # GRUB 2.12 efi_uga.mod'u kaldırdı. Bu yüzden modül listesi SABİT değil,
   # sistemde GERÇEKTEN bulunan modüllerden süzülüyor.
   local moddir="/usr/lib/grub/x86_64-efi"
+  # DİKKAT (2026-11-15): ISO'nun /boot/grub/grub.cfg'si `insmod png`, `insmod
+  # gfxterm` gibi komutlar içeriyor. Bu modüller ESP'ye GÖMÜLMEZSE GRUB
+  # "file /boot/grub/x86_64-efi/png.mod not found" deyip menüyü çizemiyor
+  # (canlı UEFI testinde görüldü). Bu yüzden menünün ihtiyaç duyduğu her modül
+  # listeye eklendi: png, gfxterm, gfxmenu, video, font, all_video, jpeg.
   local want="part_gpt part_msdos fat ext2 iso9660 udf ntfs normal linux all_video
-              gfxterm gfxmenu font search search_label search_fs_uuid search_fs_file
-              configfile loopback chain efi_gop efi_uga video_bochs video_cirrus
-              echo test sleep reboot halt serial terminal minicmd"
+              gfxterm gfxmenu png jpeg font search search_label search_fs_uuid
+              search_fs_file configfile loopback chain efi_gop video_bochs
+              video_cirrus echo test sleep reboot halt serial terminal minicmd"
   local modules=() m missing=()
   for m in $want; do
     [[ -f "$moddir/$m.mod" ]] && modules+=("$m") || missing+=("$m")
