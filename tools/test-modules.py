@@ -536,6 +536,19 @@ def test_debian_compat():
     check("macOS indirme: Apple imajı için UDIF kuyruk (koly) kontrolü",
           "koly" in fm and "tail" in fm)
 
+    # 10c) VM BAŞLATMA: CPU listesi / taskset / KVM-TCG geri dönüşü
+    #   2026-11-15 canlı hata: `$(( {} - 1 ))` bash aritmetiği hatası yüzünden
+    #   CPU listesi boş kalıyor, taskset boş maskeyle çalışıp QEMU düşüyordu.
+    vm = open(os.path.join(ROOT, "scripts/bin/macnix-vm"), encoding="utf-8").read()
+    check("macnix-vm: CPU listesi bash aritmetiğiyle güvenli üretiliyor",
+          "seq 0 $(( HOST_NCPU - 1 ))" in vm and "xargs -I{} seq" not in vm.split("# DİKKAT")[0])
+    check("macnix-vm: taskset yalnızca liste doluysa kullanılıyor",
+          'if [[ -n "$VM_CPU_LIST" ]]' in vm)
+    check("macnix-vm: /dev/kvm yoksa TCG ile çalışmaya devam ediyor",
+          'QEMU_ACCEL="tcg"' in vm and "accel=${QEMU_ACCEL}" in vm)
+    check("macnix-vm: -cpu host yalnızca KVM modunda",
+          '$ARCH_PROFILE" == "vfio" && "$QEMU_ACCEL" == "kvm"' in vm)
+
     # 10b) PAROLA SORULMASIN — 2026-11-15 canlı hata regresyon testleri
     #   (a) firstboot servisi ETKİNLEŞTİRİLMELİ: edilmediği için parola
     #       kaldırma/sudoers onarımı hiç çalışmıyordu.
