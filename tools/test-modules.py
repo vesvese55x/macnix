@@ -669,6 +669,12 @@ def test_debian_compat():
         check("şema denetleyici: SerialInit hatasını YAKALIYOR",
               r.returncode == 1 and "SerialInit" in r.stdout)
 
+    st = open(os.path.join(ROOT, "scripts/bin/macnix-setup"), encoding="utf-8").read()
+    check("panel: ANSI kaçış dizileri temizleniyor (ham renk kodu görünmüyor)",
+          "_ANSI" in st and "def _clean" in st and "[0-9;=?]" in st)
+    check("panel: terminal varsayılan kapalı + Ctrl+T ile açılıp kapanıyor",
+          "toggle_terminal" in st and "term_state" in st)
+
     # 10d) PANEL (macnix-setup) — modern + taşınabilir/kapanabilir terminal
     #   2026-11-15 kullanıcı isteği: "terminal modern olsun, hareket ettirilebilir,
     #   kapanabilir, tekrar açılabilir olsun; sabit durup kullanımı engelliyor."
