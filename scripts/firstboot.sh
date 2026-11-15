@@ -56,6 +56,14 @@ fi
 #     gerekir ve sudo NOPASSWD kurallarıyla (/etc/sudoers.d/99-macnix) çözülür.
 #   • sudo -n çalışmazsa /etc/sudoers.d/99-macnix yeniden yazılır.
 TARGET_USER="macnix"
+# Kullanıcı Calamares'te BAŞKA bir ad yazdıysa onu bul (yoksa parola orada
+# kalır — 2026-11-15 canlı hatasının ikinci sebebi buydu).
+if ! id -u "$TARGET_USER" >/dev/null 2>&1; then
+    for _u in $(awk -F: '$3 >= 1000 && $3 < 65534 && $1 != "nobody" {print $1}' /etc/passwd); do
+        TARGET_USER="$_u"; break
+    done
+    log "kurulum kullanıcısı bulundu: $TARGET_USER"
+fi
 if id -u "$TARGET_USER" >/dev/null 2>&1; then
     passwd -d "$TARGET_USER" >/dev/null 2>&1 && \
         log "parola kaldırıldı (macnix → parolasız)" || \
@@ -67,13 +75,33 @@ if id -u "$TARGET_USER" >/dev/null 2>&1; then
         passwd -d "$ALT_USER" >/dev/null 2>&1 || true
         log "autologin kullanıcısı parolasız: $ALT_USER"
     fi
-    # sudoers: NOPASSWD kuralları her durumda yerinde olsun
-    if [[ ! -f /etc/sudoers.d/99-macnix ]] || ! visudo -cf /etc/sudoers.d/99-macnix >/dev/null 2>&1; then
-        printf '%s ALL=(ALL) NOPASSWD: ALL\n' "$TARGET_USER" > /etc/sudoers.d/99-macnix
-        chmod 0440 /etc/sudoers.d/99-macnix
-        log "sudoers NOPASSWD yeniden yazıldı"
-    fi
 fi
+
+# ── 0c-2. SIFRESIZ SUDO: kullanici adi ne olursa olsun ────────────────────
+# 2026-11-15 CANLI HATA: kullanici kurulu sistemde "parola gerekli" uyarisi
+# aldi. Iki ayri sebep vardi:
+#   1) bu servis (macnix-firstboot) ISO'da ETKIN DEGILDI -> bu blok hic
+#      calismiyordu. build.sh artik etkinlestiriyor (+ derlemede dogruluyor).
+#   2) sudoers kurali yalnizca "macnix" adini kapsiyordu; kullanici kurulumda
+#      farkli bir ad yazarsa hicbir NOPASSWD kurali eslesmiyordu.
+# Cozum: %sudo grubuna tam NOPASSWD (Calamares kullaniciyi bu gruba ekliyor)
+# + sudoers.d sahiplik/izin onarimi.
+install -d -m 0750 /etc/sudoers.d
+printf '%%sudo ALL=(ALL:ALL) NOPASSWD: ALL\n' > /etc/sudoers.d/99-zz-macnix-nopasswd
+chmod 0440 /etc/sudoers.d/99-zz-macnix-nopasswd
+# sudo, sudoers.d dosyalarini ALFABETIK okur; son eslesen kazanir.
+# Calamares'in 10-installer dosyasini 99-zz ile eziyoruz.
+chown root:root /etc/sudoers.d /etc/sudoers.d/* 2>/dev/null || true
+chmod 0750 /etc/sudoers.d 2>/dev/null || true
+chmod 0440 /etc/sudoers.d/* 2>/dev/null || true
+# sozdizimi bozuksa hicbir sey calismaz -> denetle, gerekirse sadelestir
+if ! visudo -cf /etc/sudoers >/dev/null 2>&1; then
+    rm -f /etc/sudoers.d/99-macnix /etc/sudoers.d/99-zz-macnix-nopasswd
+    printf '%%sudo ALL=(ALL:ALL) NOPASSWD: ALL\n' > /etc/sudoers.d/00-macnix
+    chmod 0440 /etc/sudoers.d/00-macnix
+    log "sudoers sozdizimi bozuktu - sadelestirildi (00-macnix)"
+fi
+log "sifresiz sudo hazir (%sudo NOPASSWD) - kullanici adindan bagimsiz"
 
 # ── 0d. Oturum açma ekranı (lightdm) tamamen kapatılsın ───────────────────
 # Autologin bir sebeple çalışmazsa (ör. kullanıcı adı değişti) kullanıcı yine
