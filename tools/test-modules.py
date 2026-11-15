@@ -14,6 +14,7 @@ Kullanım:  python3 tools/test-modules.py
 import importlib.util
 import json
 import os
+import plistlib
 import shutil
 import sys
 import tempfile
@@ -560,6 +561,113 @@ def test_debian_compat():
     check("macnix-assets: 3 denemeli indirme + yerel kext önbelleği",
           "denemesi" in asst and "KEXT_CACHE" in asst)
 
+
+    # 10i) ŞEMA DENETLEYİCİSİ (bağımsız araç) — gerçek config üzerinde çalışıyor mu?
+    import subprocess, tempfile
+    sc = os.path.join(ROOT, "tools/oc-schema-check.py")
+    check("tools/oc-schema-check.py var ve çalıştırılabilir", os.access(sc, os.X_OK))
+    # Şema uyumlu bir config → 0 dönmeli
+    good = {"ACPI": {"Add": [], "Delete": [], "Patch": [], "Quirks": {
+                "FadtEnableReset": False, "NormalizeHeaders": False, "RebaseRegions": False,
+                "ResetHwSig": False, "ResetLogoStatus": True, "SyncTableIds": False}},
+            "Booter": {"MmioWhitelist": [], "Patch": [], "Quirks": {
+                "AllowRelocationBlock": False, "AvoidRuntimeDefrag": True, "DevirtualiseMmio": False,
+                "DisableSingleUser": False, "DisableVariableWrite": False, "DiscardHibernateMap": False,
+                "EnableSafeModeSlide": True, "EnableWriteUnprotector": False, "ForceBooterSignature": False,
+                "ForceExitBootServices": False, "ProtectMemoryRegions": False, "ProtectSecureBoot": False,
+                "ProtectUefiServices": True, "ProvideCustomSlide": True, "ProvideMaxSlide": 0,
+                "RebuildAppleMemoryMap": True, "ResizeAppleGpuBars": -1, "SetupVirtualMap": True,
+                "SignalAppleOS": False, "SyncRuntimePermissions": True}},
+            "DeviceProperties": {"Add": {}, "Delete": {}},
+            "Kernel": {"Add": [{"Arch": "Any", "BundlePath": "Lilu.kext", "Comment": "", "Enabled": True,
+                                "ExecutablePath": "Contents/MacOS/Lilu", "MaxKernel": "", "MinKernel": "",
+                                "PlistPath": "Contents/Info.plist"}],
+                       "Block": [], "Emulate": {"Cpuid1Data": b"", "Cpuid1Mask": b"", "DummyPowerManagement": False,
+                                                "MaxKernel": "", "MinKernel": ""},
+                       "Force": [], "Patch": [],
+                       "Quirks": {"AppleCpuPmCfgLock": False, "AppleXcpmCfgLock": False,
+                                  "AppleXcpmExtraMsrs": False, "AppleXcpmForceBoost": False,
+                                  "CustomSMBIOSGuid": False, "DisableIoMapper": True,
+                                  "DisableLinkeditJettison": True, "DisableRtcChecksum": False,
+                                  "ExtendBTFeatureFlags": False, "ForceAquantiaEthernet": False,
+                                  "LapicKernelPanic": False, "LegacyCommpage": False, "PanicNoKextDump": True,
+                                  "PowerTimeoutKernelPanic": True, "ProvideCurrentCpuInfo": False,
+                                  "SetApfsTrimTimeout": -1, "ThirdPartyDrives": False, "XhciPortLimit": True},
+                       "Scheme": {"FuzzyMatch": True, "KernelArch": "Auto", "KernelCache": "Auto"}},
+            "Misc": {"Boot": {"ConsoleAttributes": 0, "HibernateMode": "None", "HibernateSkipsPicker": False,
+                              "HideAuxiliary": True, "InstanceIdentifier": "", "LauncherOption": "Disabled",
+                              "LauncherPath": "Default", "PickerAttributes": 17, "PickerAudioAssist": False,
+                              "PickerMode": "Builtin", "PickerVariant": "Auto", "PollAppleHotKeys": False,
+                              "ShowPicker": True, "TakeoffDelay": 0, "Timeout": 5},
+                     "Debug": {"AppleDebug": False, "ApplePanic": False, "DisableWatchDog": True,
+                               "DisplayDelay": 0, "DisplayLevel": 0, "SysReport": False, "Target": 3},
+                     "Security": {"AllowSetDefault": True, "ApECID": 0, "AuthRestart": False,
+                                  "BlacklistAppleUpdate": True, "DmgLoading": "Signed", "EnablePassword": False,
+                                  "ExposeSensitiveData": 6, "HaltLevel": 2147483650, "PasswordHash": b"",
+                                  "PasswordSalt": b"", "ScanPolicy": 0, "SecureBootModel": "Disabled",
+                                  "Vault": "Optional"},
+                     "Serial": {"Init": False, "Override": False},
+                     "Tools": []},
+            "NVRAM": {"Add": {}, "Delete": {}, "LegacyOverwrite": False, "LegacySchema": {},
+                      "WriteFlash": True},
+            "PlatformInfo": {"Automatic": True, "CustomMemory": False,
+                             "Generic": {"AdviseFeatures": False, "MLB": "Y", "ROM": b"\xaa\xbb\xcc\xdd\xee\xff",
+                                         "SpoofVendor": True, "SystemMemoryStatus": "Auto",
+                                         "SystemProductName": "iMacPro1,1", "SystemSerialNumber": "X",
+                                         "SystemUUID": "5D2E1B40-1111-2222-3333-444455556666",
+                                         "MaxBIOSVersion": False, "ProcessorType": 0},
+                             "UpdateDataHub": True, "UpdateNVRAM": True, "UpdateSMBIOS": True,
+                             "UpdateSMBIOSMode": "Create", "UseRawUuidEncoding": False},
+            "UEFI": {"APFS": {"EnableJumpstart": True, "GlobalConnect": False, "HideVerbose": True,
+                              "JumpstartHotPlug": False, "MinDate": 0, "MinVersion": 0},
+                     "AppleInput": {"AppleEvent": "Builtin", "CustomDelays": False, "GraphicsInputMirroring": True,
+                                    "KeyInitialDelay": 0, "KeySubsequentDelay": 5, "PointerDwellClickTimeout": 0,
+                                    "PointerDwellDoubleClickTimeout": 0, "PointerDwellRadius": 0,
+                                    "PointerPollMax": 0, "PointerPollMin": 0, "PointerSpeedDiv": 1,
+                                    "PointerSpeedMul": 1},
+                     "Audio": {"AudioCodec": 0, "AudioDevice": "", "AudioOutMask": 1, "AudioSupport": False,
+                               "DisconnectHda": False, "MaximumGain": 0, "MinimumAssistGain": -30,
+                               "MinimumAudibleGain": -55, "PlayChime": "Auto", "ResetTrafficClass": False,
+                               "SetupDelay": 0},
+                     "ConnectDrivers": True,
+                     "Drivers": [{"Arguments": "", "Comment": "", "Enabled": True, "LoadEarly": False,
+                                  "Path": "OpenRuntime.efi"}],
+                     "Input": {"KeyFiltering": False, "KeyForgetThreshold": 5, "KeySupport": True, "KeySwap": False,
+                               "KeySupportMode": "Auto", "PointerSupport": False, "PointerSupportMode": "",
+                               "TimerResolution": 50000},
+                     "Output": {"ClearScreenOnModeSwitch": False, "ConsoleMode": "", "DirectGopRendering": False,
+                                "ForceResolution": False, "GopBurstMode": False, "IgnoreTextInGraphics": False,
+                                "InitialMode": "Auto", "ProvideConsoleGop": True,
+                                "ReconnectGraphicsOnConnect": False, "ReconnectOnResChange": False,
+                                "ReplaceTabWithSpace": False, "Resolution": "Max", "SanitiseClearScreen": False,
+                                "TextRenderer": "BuiltinGraphics", "UgaPassThrough": False},
+                     "ProtocolOverrides": {"AppleAudio": False, "AppleBootPolicy": False, "AppleDebugLog": False,
+                                           "AppleEg2Info": False, "AppleFramebufferInfo": False,
+                                           "AppleImageConversion": False, "AppleImg4Verification": False,
+                                           "AppleKeyMap": False, "AppleRtcRam": False, "AppleSecureBoot": False,
+                                           "AppleSmcIo": False, "AppleUserInterfaceTheme": False,
+                                           "DataHub": False, "DeviceProperties": False, "FirmwareVolume": False,
+                                           "HashServices": False, "OSInfo": False, "UnicodeCollation": False},
+                     "Quirks": {"ActivateHpetSupport": False, "DisableSecurityPolicy": False,
+                                "EnableVectorAcceleration": True, "EnableVmx": False, "ExitBootServicesDelay": 0,
+                                "ForceOcWriteFlash": False, "ForgeUefiSupport": False,
+                                "IgnoreInvalidFlexRatio": False, "ReleaseUsbOwnership": True,
+                                "ReloadOptionRoms": False, "RequestBootVarRouting": True, "ResizeGpuBars": -1,
+                                "ResizeUsePciRbIo": False, "ShimRetainProtocol": False, "TscSyncTimeout": 0,
+                                "UnblockFsConnect": False},
+                     "ReservedMemory": [], "Unload": []}}
+    with tempfile.TemporaryDirectory() as td:
+        gp = os.path.join(td, "good.plist")
+        plistlib.dump(good, open(gp, "wb"))
+        r = subprocess.run([sys.executable, sc, gp], capture_output=True, text=True)
+        check("şema denetleyici: uyumlu config'i GEÇİRİYOR", r.returncode == 0)
+        bad = json.loads(json.dumps(good, default=str))
+        bad["Misc"]["Debug"]["SerialInit"] = False           # gerçek hatayı taklit et
+        bp = os.path.join(td, "bad.plist")
+        plistlib.dump(bad, open(bp, "wb"))
+        r = subprocess.run([sys.executable, sc, bp], capture_output=True, text=True)
+        check("şema denetleyici: SerialInit hatasını YAKALIYOR",
+              r.returncode == 1 and "SerialInit" in r.stdout)
 
     # 10d) PANEL (macnix-setup) — modern + taşınabilir/kapanabilir terminal
     #   2026-11-15 kullanıcı isteği: "terminal modern olsun, hareket ettirilebilir,
