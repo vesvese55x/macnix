@@ -415,7 +415,10 @@ KIMLIK
   #   • 99-macnix-live → canlı ortamda tam NOPASSWD (010-live'dan taşındı)
   install -d -m 0750 "$ROOTFS/etc/sudoers.d"
   install -m 0440 "${ROOT}/overlay/etc/sudoers.d/99-macnix" "$ROOTFS/etc/sudoers.d/99-macnix"
-  printf 'macnix ALL=(ALL) NOPASSWD: ALL\nmacnix-live ALL=(ALL) NOPASSWD: ALL\n' > "$ROOTFS/etc/sudoers.d/99-macnix-live"
+  # %sudo = Calamares'in kurulumda oluşturduğu kullanıcının grubu.
+  # Bu satır olmadan kurulu sistemde "sudo: a password is required" çıkıyordu
+  # (kullanıcı 2026-11-15'te canlı olarak bildirdi).
+  printf 'macnix ALL=(ALL) NOPASSWD: ALL\nmacnix-live ALL=(ALL) NOPASSWD: ALL\n%%sudo ALL=(ALL:ALL) NOPASSWD: ALL\n' > "$ROOTFS/etc/sudoers.d/99-macnix-live"
   chmod 0440 "$ROOTFS/etc/sudoers.d/99-macnix-live"
   # Eski adlar kalırsa (yükseltme/önbellek) sudo karışabilir: temizle
   rm -f "$ROOTFS/etc/sudoers.d/020-macnix" "$ROOTFS/etc/sudoers.d/010-live"
@@ -476,7 +479,14 @@ EOF
     chroot_run "command -v plymouth-set-default-theme >/dev/null && plymouth-set-default-theme macnix || true" || true
   fi
 
-  chroot_run "systemctl enable macnix-live.service      >/dev/null 2>&1 || true
+  # DİKKAT (2026-11-15 — canlı hata): macnix-firstboot.service EN SON
+  # etkinleştirilmemişti; ISO'da multi-user.target.wants içinde YOKTU.
+  # Bu yüzden kurulumdan sonraki ilk açılışta passwd -d (parolasız hesap),
+  # lightdm autologin düzeltmesi ve sudoers onarımı HİÇ ÇALIŞMADI →
+  # kullanıcı "parola gerekli" uyarısıyla kalıyordu. Artık etkinleştiriliyor
+  # ve hemen ardından VARLIĞI DOĞRULANIYOR.
+  chroot_run "systemctl enable macnix-firstboot.service  >/dev/null 2>&1 || true
+              systemctl enable macnix-live.service      >/dev/null 2>&1 || true
               systemctl enable lightdm.service        >/dev/null 2>&1 || true
               systemctl enable NetworkManager.service >/dev/null 2>&1 || true
               systemctl set-default graphical.target  >/dev/null 2>&1 || true
@@ -574,6 +584,17 @@ finalize_calamares_config() {
   grep -q 'slideshow:'        "$d/branding/macnix/branding.desc" || { warn "branding.desc: slideshow yok"; err=1; }
   [[ -f "$d/branding/macnix/show.qml" ]] || { warn "show.qml yok"; err=1; }
   [[ -d "$d/qml/calamares/slideshow" ]] || warn "slideshow QML modülü bulunamadı (slaytlar boş kalabilir)"
+
+  # ── PAROLA SORULMASIN: iki dosya ISO'da olmak ZORUNDA ──────────────────
+  # 1) firstboot servisi ETKİN (sembolik bağ) — passwd -d + autologin onarımı
+  [[ -L "$ROOTFS/etc/systemd/system/multi-user.target.wants/macnix-firstboot.service" ]] || {
+    warn "macnix-firstboot.service ETKİN DEĞİL — kurulum sonrası kimse parolasız yapmaz"; err=1; }
+  [[ -x "$ROOTFS/opt/macnix/scripts/firstboot.sh" ]] || {
+    warn "firstboot.sh yok/çalıştırılabilir değil"; err=1; }
+  # 2) users grubuna NOPASSWD: her komut için ŞİFRESİZ sudo (günlük işler,
+  #    paket kurma, sistem ayarları dahil — kullanıcıya hiç parola sorulmaz)
+  grep -q 'NOPASSWD' "$ROOTFS/etc/sudoers.d/99-macnix-live" 2>/dev/null || {
+    warn "99-macnix-live: %sudo NOPASSWD kuralı yok (parola sorulur)"; err=1; }
   (( err == 0 )) && ok "Calamares yapılandırması son hâli yazıldı ve doğrulandı"
 }
 
