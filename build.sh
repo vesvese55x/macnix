@@ -700,10 +700,20 @@ build_efi() {
   [[ ${#missing[@]} -gt 0 ]] && warn "bu GRUB sürümünde yok (atlandı): ${missing[*]}"
   log "EFI modülleri: ${#modules[@]} adet"
 
-  grub-mkstandalone --format=x86_64-efi --output="$efi" \
-    --modules="${modules[*]}" \
-    --locales="" --themes="" --fonts="" \
-    "boot/grub/grub.cfg=${ROOT}/config/grub/grub-efi-embed.cfg"
+  # ── NEDEN grub-mkimage (grub-mkstandalone DEĞİL) ────────────────────────
+  # 2026-11-15 CANLI ISO TESTİNDE BULUNAN GERÇEK HATA:
+  #   `grub-mkstandalone` gömülü cfg'yi bir "memdisk" (sahte FAT imajı) içine
+  #   koyar. OVMF bu memdisk'i disk olarak bağlayınca GRUB onda kendini yeniden
+  #   buluyor ve sonsuz döngüye giriyordu — seri günlükte onlarca kez:
+  #       error: maximum recursion depth exceeded.
+  #   Sonuç: ISO **UEFI'de menü açılmıyor**, doğrudan grub> kabuğuna düşüyordu.
+  #   Ayrıca gömülü cfg'yi GRUB, `#` yorum satırlarını bile komut sanarak
+  #   ayrıştırıyor ("Unknown command `#'") — bu yüzden gömülü cfg ASCII ve
+  #   yorumsuz olmak ZORUNDA.
+  #   Çözüm: memdisk'siz `grub-mkimage` + cfg dosyası ESP'de gerçek dosya
+  #   olarak (/EFI/BOOT/grub.cfg) ve prefix=/EFI/BOOT.
+  grub-mkimage -O x86_64-efi -o "$efi" -p /EFI/BOOT \
+    "${modules[@]}"
   ok "BOOTX64.EFI ($(du -h "$efi" | cut -f1))"
 
   local img="$ISOTREE/boot/grub/efi.img"
@@ -713,6 +723,7 @@ build_efi() {
   mkfs.vfat -n MACNIX_EFI "$img" >/dev/null
   mmd -i "$img" ::/EFI ::/EFI/BOOT
   mcopy -i "$img" "$efi" ::/EFI/BOOT/BOOTX64.EFI
+  mcopy -i "$img" "${ROOT}/config/grub/grub-efi-embed.cfg" ::/EFI/BOOT/grub.cfg
   ok "efiboot.img ($(du -h "$img" | cut -f1))"
 }
 
