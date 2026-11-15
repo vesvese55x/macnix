@@ -205,6 +205,62 @@ else
   wr "QEMU günlüğü yok (VM hiç başlatılmamış)"
 fi
 
+# ── Önyükleme zinciri teşhisi (2026-11-15 eklenen gerçek bulgular) ────────
+head "Önyükleme zinciri (OpenCore → macOS)"
+
+SERIAL="$VARS/logs/serial.log"
+if [[ -f "$SERIAL" ]]; then
+  # OpenCore seri günlüğünden NEREDE durduğunu oku — tahmin değil, kanıt.
+  if grep -q "OC: Starting OpenCore" "$SERIAL"; then
+    ok "OpenCore başladı"
+  else
+    wr "OpenCore hiç başlamadı (ESP/BOOTx64 sorunu)"
+    hint "sudo macnix-oc --build ile ESP'yi yeniden üretin"
+  fi
+  if grep -q "Loaded configuration of" "$SERIAL"; then
+    ok "config.plist yüklendi ($(grep -o 'Loaded configuration of [0-9]*' "$SERIAL" | tail -1 | awk '{print $4}') bayt)"
+  else
+    er "config.plist yüklenemedi"
+    hint "sudo macnix-oc --check"
+  fi
+  if grep -q "OCS:" "$SERIAL"; then
+    wr "$(grep -c 'OCS:' "$SERIAL") config şema uyarısı (ölümcül değil)"
+    hint "ayrıntı: grep OCS: $SERIAL"
+  fi
+  if grep -q "OpenRuntime.efi at 0 is successfully loaded" "$SERIAL"; then
+    ok "OpenRuntime yüklendi"
+  else
+    er "OpenRuntime yüklenemedi — macOS hiç açılmaz"
+    hint "macnix-oc --build (OpenRuntime.efi zorunlu sürücüdür)"
+  fi
+
+  # KVM yoksa OpenCore ilerleyemez: bu bir hata değil, ortam sınırıdır.
+  if grep -q "Watchdog status" "$SERIAL" && \
+     ! grep -q "OC: OcMiscLateInit" "$SERIAL"; then
+    if [[ ! -e /dev/kvm ]]; then
+      er "OpenCore KVM olmadan ilerleyemiyor (yazılım emülasyonu yetersiz)"
+      hint "BIOS'ta SVM/VT-x açın (AMD) ya da VT-x (Intel) — 'kvm-ok' ile doğrulayın"
+      hint "bu makinede /dev/kvm yok: macOS yalnızca KVM ile açılır (OSX-KVM de böyle)"
+    else
+      wr "OpenCore erken aşamada durdu"
+      hint "tail -40 $SERIAL"
+    fi
+  elif grep -q "OC: OcMiscLateInit" "$SERIAL"; then
+    ok "OpenCore önyükleme menüsüne geçti"
+  fi
+else
+  wr "Seri günlük yok — VM hiç başlatılmamış ya da eski sürüm"
+  hint "sudo macnix-vm start (yeni sürüm seri günlüğü otomatik açar)"
+fi
+
+# Hızlandırma durumu (performans için kritik)
+if [[ -e /dev/kvm && -w /dev/kvm ]]; then
+  ok "KVM hızlandırma kullanılabilir — macOS tam hızda çalışır"
+else
+  wr "KVM yok — VM yazılım emülasyonunda (yaklaşık 10-20× yavaş)"
+  hint "VM içinde VM çalıştırıyorsanız: ana makinede 'nested virtualization' açık olmalı"
+fi
+
 # ── Özet ───────────────────────────────────────────────────────────────────
 printf '\n%s── Özet ──%s\n' "$C_B" "$C_R"
 # ÇIKIŞ KODU SÖZLEŞMESİ (script'ler ve systemd bunu okuyabilir):
