@@ -566,6 +566,26 @@ def test_debian_compat():
     check("macnix-vm: -cpu host yalnızca KVM modunda",
           '$ARCH_PROFILE" == "vfio" && "$QEMU_ACCEL" == "kvm"' in vm)
 
+    # 10e) QEMU KOMUT SATIRI — 2026-11-15 canlı bulgularla bulunan 7 gerçek hata
+    #   Bunların hepsi QEMU'yu HİÇ açtırmıyordu; hepsi gerçek qemu-system-x86_64
+    #   (10.0) ile tek tek doğrulandı.
+    check("macnix-vm: -no-hpet kaldırıldı (QEMU 8+ geçersiz) → hpet=off",
+          "-no-hpet" not in vm.split("# DİKKAT")[0] and "hpet=off" in vm)
+    check("macnix-vm: SMBIOS modelindeki virgül kaçırılıyor (iMacPro1,1)",
+          "SMBIOS_MODEL//,/-" in vm)
+    check("macnix-vm: OpenCore diski q35'te ide.1'e bağlı (sata.2 yok)",
+          'bus=ide.1,drive=OC' in vm and 'bus=sata.2' not in vm)
+    check("macnix-vm: MAC adresi her zaman 6 oktet",
+          "VM_MAC" in vm and "os.urandom(3)" in vm)
+    check("macnix-vm: O_DIRECT desteklenmiyorsa cache=writeback",
+          "O_DIRECT" in vm and 'CACHE_MODE="writeback"' in vm)
+    check("macnix-vm: OpenGL yoksa virtio-vga (virtio-vga-gl değil)",
+          "QEMU_GL" in vm and "virtio-vga,edid=on" in vm)
+    check("macnix-vm: bellek host'a sığmıyorsa güvenli değere düşülüyor",
+          "MEM_AVAIL_MB" in vm and 'MEM_LOCK="off"' in vm)
+    check("macnix-vm: ses aygıtı yoksa -audiodev none",
+          "audiodev none" in vm)
+
     # 10b) PAROLA SORULMASIN — 2026-11-15 canlı hata regresyon testleri
     #   (a) firstboot servisi ETKİNLEŞTİRİLMELİ: edilmediği için parola
     #       kaldırma/sudoers onarımı hiç çalışmıyordu.
