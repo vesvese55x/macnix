@@ -319,7 +319,25 @@ def gui():
     term_state = {"visible": False, "cwd": os.path.expanduser("~"),
                   "hist": [], "hi": -1, "prompt": "$ "}
 
+    # ANSI kaçış dizileri + aşırı satır sonu temizliği.
+    # 2026-11-15: macnix-vm/macnix-doctor renkli çıktı veriyor; GTK TextView
+    # ANSI kodlarını ÇİZEMİYOR, ham "\033[0;32m" metni görünüyordu (rapor §4'te
+    # "panel günlüğünde ANSI temizliği bekliyor" diye yazılıydı). Artık anında
+    # temizleniyor; satır taşması yerine silme () karakterleri de atılır.
+    import re as _re
+    _ANSI = _re.compile(r"\x1b\[[0-9;=?]*[ -/]*[@-~]|\x1b\][^\x07]*\x07|\x1b[@-Z\\-_]")
+
+    def _clean(text):
+        text = _ANSI.sub("", text)
+        text = text.replace("\r\n", "\n").replace("\r", "\n")
+        text = text.replace("\x08", "").replace("\x00", "")
+        # aynı satırın art arda 3+ kez boş tekrarı → tek boş satıra indir
+        while "\n\n\n\n" in text:
+            text = text.replace("\n\n\n\n", "\n\n\n")
+        return text
+
     def term_write(text):
+        text = _clean(text)
         def _do():
             term_buf.insert(term_buf.get_end_iter(), text)
             m = term_buf.create_mark(None, term_buf.get_end_iter(), False)
