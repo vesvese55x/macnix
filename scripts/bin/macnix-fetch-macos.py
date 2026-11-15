@@ -77,59 +77,75 @@ def make_serial():
     return f"C02{year}{week}{uniq}HX87"
 
 
-def request_recovery(board, serial, oem="Apple Inc."):
-    """Apple kurtarma servisinden imaj URL'i ve kimlik başlıklarını al."""
-    mac = rand_hex(12)
+def get_session():
+    """Apple kurtarma servisinden OTURUM çerezi al.
+
+    NEDEN GEREKLİ (2026-11-15, gerçek hata): Eski kod doğrudan
+    /InstallationPayload/RecoveryImage adresine POST atıyordu ve Apple
+    **HTTP 401** döndürüyordu. Apple's protokolü (OpenCorePkg
+    Utilities/macrecovery referans uygulaması) önce ana sayfaya GET atıp
+    `session=...` çerezini almayı ZORUNLU kılıyor. Çerez olmadan 401.
+    """
     headers = {
-        "User-Agent": "Mac OS X/10.13.6 (17G66); Darwin/17.7.0; x86_64",
-        "Content-Type": "text/plain",
-        "oem": oem,
-        "mac": mac,
-        "boardid": board,
-        "sn": serial,
+        "Host": "osrecovery.apple.com",
+        "Connection": "close",
+        "User-Agent": "InternetRecovery/1.0",
     }
-    info(f"Apple kurtarma servisine bağlanılıyor (board {board})…")
-    # 2026-11-15 CANLI HATA: Apple 401 döndürdü ("HTTP Error 401") ve kurulum
-    # 3. adımda durdu. Sebep: Apple kurtarma API'si artık GÖVDE göndermeyi
-    # ve bazı başlıkları farklı bekliyor. Aşağıdaki denemeler sırayla yapılır;
-    # ilk 200 dönen kullanılır. Hepsi başarısız olursa hata mesajı NE
-    # DENENDİĞİNİ açıkça listeler (kullanıcı tahmin etmek zorunda kalmasın).
-    attempts = [
-        # (gövde, ek başlıklar) — en olasıdan başlar
-        (b"", {}),
-        (b"", {"Accept": "*/*", "Connection": "keep-alive"}),
-        (b"{}", {"Content-Type": "application/json"}),
-        (b"", {"X-Apple-I-MD-M": rand_hex(12), "X-Apple-I-MD-LU": rand_hex(16)}),
-    ]
+    req = urllib.request.Request(RECOVERY_HOST + "/", headers=headers)
+    with urllib.request.urlopen(req, timeout=45) as resp:
+        raw_headers = resp.info()
+    cookies = []
+    for key, value in raw_headers.items():
+        if key.lower() == "set-cookie":
+            for part in value.split("; "):
+                if part.startswith("session="):
+                    cookies.append(part)
+    if not cookies:
+        raise RuntimeError("Apple oturum çerezi vermedi (session= yok)")
+    return cookies[0]
+
+
+def request_recovery(board, serial, oem="Apple Inc.", os_type="default"):
+    """RecoveryImage bilgilerini al: AU (imaj URL), AH (SHA256), AT (token).
+
+    Gövde biçimi macrecovery ile birebir aynıdır:
+        cid / sn / bid / k / fg / os  — satır başına `anahtar=değer`,
+        Content-Type: text/plain
+    `sn` Apple'ın beklediği MLB biçimidir (17 karakter, ortası sıfır).
+    """
+    session = get_session()
+    info("Apple kurtarma oturumu alındı")
+
+    post = {
+        "cid": rand_hex(16),
+        "sn": (serial or "00000000000")[:17].ljust(17, "0"),
+        "bid": board,
+        "k": rand_hex(64),
+        "fg": rand_hex(64),
+        "os": os_type,
+    }
+    body = "\n".join("%s=%s" % (k, v) for k, v in post.items()).encode()
+
+    headers = {
+        "Host": "osrecovery.apple.com",
+        "Connection": "close",
+        "User-Agent": "InternetRecovery/1.0",
+        "Cookie": session,
+        "Content-Type": "text/plain",
+    }
+    info("Apple kurtarma servisine bağlanılıyor (board %s)" % board)
+    req = urllib.request.Request(RECOVERY_HOST + RECOVERY_PATH,
+                                 data=body, headers=headers, method="POST")
     try:
-        import ssl
-        ctx = ssl.create_default_context()
-        ctx.check_hostname = False
-        ctx.verify_mode = ssl.CERT_NONE
-    except Exception:
-        ctx = None
-    last_err = None
-    for body, extra in attempts:
-        hdrs = dict(headers)
-        hdrs.update(extra)
-        req = urllib.request.Request(RECOVERY_HOST + RECOVERY_PATH,
-                                    data=body, headers=hdrs, method="POST")
-        try:
-            with urllib.request.urlopen(req, timeout=45,
-                                        context=ctx) as resp:
-                payload = resp.read().decode("utf-8", errors="replace")
-            if payload.strip():
-                return payload
-        except Exception as exc:            # noqa: BLE001 — tanılama için
-            last_err = exc
-            info(f"  deneme başarısız: {exc}")
-            continue
-    raise RuntimeError(
-        "Apple kurtarma servisi yanıt vermedi (son hata: %s). "
-        "Denenen yöntemler: gövdesiz POST, Accept başlıklı POST, JSON gövde, "
-        "MD başlıklı POST. Olası nedenler: (1) ağ/internet yok, "
-        "(2) Apple bu IP'yi engelliyor, (3) macOS sürüm kimliği güncel değil. "
-        "Ayrıntı: /var/log/macnix-install.log" % last_err)
+        with urllib.request.urlopen(req, timeout=60) as resp:
+            return resp.read().decode("utf-8", errors="replace")
+    except urllib.error.HTTPError as exc:
+        detail = exc.read()[:200].decode("utf-8", "replace")
+        raise RuntimeError(
+            "Apple kurtarma servisi HTTP %s döndürdü (%s). "
+            "Olası nedenler: osrecovery.apple.com engelli, çok sayıda istek "
+            "nedeniyle geçici engel, ya da seçilen board-id bu sürümü "
+            "desteklemiyor. Yanıt: %s" % (exc.code, exc.reason, detail))
 
 
 def parse_payload(payload):
@@ -180,6 +196,62 @@ def download(url, headers, dest, expected=None):
     return dest
 
 
+def verify_chunklist_image(dmgpath, cnkpath):
+    """Apple chunklist'ine göre imajı parça parça doğrular.
+
+    Biçim (OpenCorePkg/macrecovery ile birebir, KÜÇÜK-endian):
+        başlık  : '<4sIBBBxQQQ'  (36 bayt)  → sihir 'CNKL', sürüm 1, parça sayısı
+        parçalar: '<I32s'        (36 bayt)  → boyut + SHA256
+        ardından: 256 baytlık RSA imza (signature_method=1) veya 32 bayt özet
+
+    DİKKAT: İlk denemede alanlar büyük-endian okundu ve "chunklist içinde
+    parça yok" hatası alındı (canlı test). Apple bu dosyayı küçük-endian
+    yazıyor.
+    """
+    import struct
+    HDR = struct.Struct("<4sIBBBxQQQ")
+    CHUNK = struct.Struct("<I32s")
+
+    with open(cnkpath, "rb") as cf:
+        raw = cf.read(HDR.size)
+        if len(raw) < HDR.size:
+            raise RuntimeError("chunklist bozuk (başlık eksik)")
+        magic, hdr_size, ver, chunk_method, sig_method, count, c_off, s_off = \
+            HDR.unpack(raw)
+        if magic != b"CNKL":
+            raise RuntimeError("chunklist sihirli sayısı yanlış (%r)" % magic)
+        if ver != 1:
+            raise RuntimeError("desteklenmeyen chunklist sürümü: %d" % ver)
+        if count <= 0:
+            raise RuntimeError("chunklist içinde parça yok")
+        chunks = []
+        for _ in range(count):
+            rec = cf.read(CHUNK.size)
+            if len(rec) < CHUNK.size:
+                raise RuntimeError("chunklist eksik (parça kaydı kesildi)")
+            size, digest = CHUNK.unpack(rec)
+            chunks.append((size, digest))
+
+    total_expected = sum(s for s, _ in chunks)
+    actual = os.path.getsize(dmgpath)
+    if actual != total_expected:
+        raise RuntimeError("boyut uyuşmuyor (dosya %d, chunklist %d)"
+                           % (actual, total_expected))
+
+    with open(dmgpath, "rb") as df:
+        for idx, (size, digest) in enumerate(chunks, 1):
+            block = df.read(size)
+            if len(block) != size:
+                raise RuntimeError("parça %d eksik" % idx)
+            if hashlib.sha256(block).digest() != digest:
+                return False
+            if idx % 10 == 0 or idx == len(chunks):
+                info("  parça %d/%d doğrulandı" % (idx, len(chunks)))
+        if df.read(1):
+            raise RuntimeError("dosya chunklist'ten uzun")
+    return True
+
+
 def main(argv=None):
     ap = argparse.ArgumentParser(description="MacNix — macOS kurulum imajı indirici")
     ap.add_argument("--os", default="sequoia",
@@ -222,14 +294,16 @@ def main(argv=None):
         print(payload[:300], file=sys.stderr)
         return 4
 
-    # İndirme başlıkları: kurtarma oturumunun kendi kimlik bilgileri
+    # İndirme başlıkları — macrecovery ile BİREBİR aynı:
+    #   Cookie: AssetToken=<AT>    (AT alanı "expires=..." ile başlar)
+    #   User-Agent: InternetRecovery/1.0
+    # Eski kod "X-Apple-Asset-Token"/"Authorization" kullanıyordu; Apple bunu
+    # kabul etmiyor (indirme 401/403 verirdi).
     dl_headers = {
-        "User-Agent": "Mac OS X/10.13.6 (17G66); Darwin/17.7.0; x86_64",
+        "User-Agent": "InternetRecovery/1.0",
+        "Cookie": "AssetToken=%s" % fields.get("AT", ""),
         "Accept": "*/*",
     }
-    for key in ("AH", "AT"):
-        if fields.get(key):
-            dl_headers["Authorization" if key == "AH" else "X-Apple-Asset-Token"] = fields[key]
 
     filename = os.path.basename(asset_url.split("?")[0]) or f"{args.os}.dmg"
     if not filename.lower().endswith((".dmg", ".img")):
@@ -255,13 +329,65 @@ def main(argv=None):
         fail(f"İndirilen dosya çok küçük ({size} bayt) — imaj geçersiz")
         return 6
 
+    # ── Bütünlük: Apple CHUNKLIST doğrulaması ──────────────────────────────
+    # ÖNEMLİ (2026-11-15, gerçek ölçüm): Apple'ın `AH` alanı BaseSystem.dmg'nin
+    # TAM dosya SHA256'sı DEĞİLDİR. 884 MB'lık indirme, AH ile
+    # karşılaştırıldığında "uyuşmuyor" görünüyordu — oysa dosya kusursuzdu:
+    # Apple'ın kendi BaseSystem.chunklist'i ile 85/85 parça BİREBİR eşleşti.
+    # Doğru yöntem (OpenCorePkg/macrecovery → verify_image): chunklist'i indir,
+    # dosyayı parça parça oku ve her parçanın SHA256'sını karşılaştır.
+    chunk_ok = None
+    cu, ct = fields.get("CU"), fields.get("CT")
+    if cu and ct:
+        cnk_path = dest + ".chunklist"
+        try:
+            from urllib.parse import urlparse as _up
+            _p = _up(cu)
+            cnk_headers = {
+                "Host": _p.hostname,
+                "Connection": "close",
+                "User-Agent": "InternetRecovery/1.0",
+                "Cookie": "AssetToken=%s" % ct,
+            }
+            info("Bütünlük listesi (chunklist) indiriliyor")
+            with urllib.request.urlopen(
+                    urllib.request.Request(cu, headers=cnk_headers),
+                    timeout=120) as resp, open(cnk_path, "wb") as fh:
+                fh.write(resp.read())
+            chunk_ok = verify_chunklist_image(dest, cnk_path)
+            if chunk_ok:
+                info("Chunklist doğrulaması BAŞARILI — imaj Apple ile birebir")
+            else:
+                fail("Chunklist doğrulaması BAŞARISIZ — indirme bozuk")
+                warn("Tekrar denemek için: macnix-fetch-macos --force")
+                return 7
+        except Exception as exc:            # noqa: BLE001 — tanılama
+            warn("Chunklist doğrulanamadı: %s" % exc)
+            chunk_ok = None
+
+    if chunk_ok is None:
+        warn("Bütünlük doğrulaması YAPILAMADI (chunklist alınamadı) — "
+             "imaj boyutu doğru ama içerik doğrulanmadı")
+
     info(f"Tamam: {dest} ({size/1048576:.0f} MB)")
+
+    # ── Biçim tespiti ──────────────────────────────────────────────────────
+    # DİKKAT (2026-11-15, canlı test): Apple'ın BaseSystem.dmg dosyası
+    # "koly" imzasını BAŞTA değil SONDA (512 baytlık UDIF kuyruğu) taşır ve
+    # gövdesi zlib (78 da) ile sıkıştırılmıştır. Eski kontrol baştan
+    # baktığı için "Bilinmeyen dosya imzası" uyarısı veriyordu — dosya
+    # aslında kusursuzdu (chunklist 85/85 doğruladı).
     with open(dest, "rb") as fh:
-        head = fh.read(512)
-    if head[:2] == b"koly":
-        info("UDIF (DMG) biçimi doğrulandı")
-    elif head[:4] == b"\x1aE\xdf\xa3" or head[:4] == b"\x00\x00\x00\x00":
-        info("Ham disk imajı biçimi")
+        head = fh.read(4)
+        fh.seek(max(0, size - 512))
+        tail = fh.read(512)
+    if b"koly" in tail:
+        info("UDIF (DMG) biçimi doğrulandı — sıkıştırılmış disk imajı")
+    elif head[:4] == b"\x1aE\xdf\xa3":
+        info("Ham disk imajı biçimi (raw)")
+    elif head[:2] == b"\x78\xda" or head[:2] == b"\x78\x9c":
+        warn("zlib ile sıkıştırılmış veri — UDIF kuyruğu yok, dmg2img "
+             "açamayabilir (imaj eksik indirilmiş olabilir)")
     else:
         warn("Bilinmeyen dosya imzası — dmg2img adımı başarısız olabilir")
 
