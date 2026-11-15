@@ -566,6 +566,21 @@ def test_debian_compat():
     check("macnix-vm: -cpu host yalnızca KVM modunda",
           '$ARCH_PROFILE" == "vfio" && "$QEMU_ACCEL" == "kvm"' in vm)
 
+    # 10f) OPENCORE / UEFI ÖNYÜKLEME — 2026-11-15 gerçek önyükleme denemesi
+    #   OSX-KVM + OpenCore 1.0.8 + gerçek OVMF ile QEMU çalıştırıldı, OpenCore
+    #   config'i ayrıştırdı. Bulunan hatalar koda aktarıldı.
+    oc = open(os.path.join(ROOT, "scripts/bin/macnix-oc"), encoding="utf-8").read()
+    check("macnix-oc: ESP FAT16 olarak kuruluyor (FAT32'de uzun ad yazılamıyor)",
+          'FAT_TYPE=16' in oc and 'mkfs.vfat -F "$FAT_TYPE"' in oc)
+    check("macnix-oc: kext alt dizinleri mmd ile açılıyor",
+          'Contents/MacOS' in oc and "mmd -i" in oc)
+    check("macnix-oc: ESP içeriği doğrulanıyor (BOOTx64/OpenCore/config/OpenRuntime)",
+          "verify_esp" in oc and "EFI/BOOT/BOOTx64.efi" in oc)
+    check("macnix-oc: GPT + ESP bayraklı imaj üretiliyor (UEFI tanısın)",
+          "mklabel gpt" in oc and "set 1 esp on" in oc)
+    check("macnix-vm: UEFI NVRAM kalıcı (pflash qcow2)",
+          "OVMF_VARS_QCOW2" in vm and "format=qcow2,file=${OVMF_VARS_QCOW2}" in vm)
+
     # 10e) QEMU KOMUT SATIRI — 2026-11-15 canlı bulgularla bulunan 7 gerçek hata
     #   Bunların hepsi QEMU'yu HİÇ açtırmıyordu; hepsi gerçek qemu-system-x86_64
     #   (10.0) ile tek tek doğrulandı.
