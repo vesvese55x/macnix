@@ -1,0 +1,435 @@
+{
+ "#WARNING - 1": "str",
+ "#WARNING - 2": "str",
+ "#WARNING - 3": "str",
+ "#WARNING - 4": "str",
+ "ACPI": {
+  "Add": [
+   {
+    "Comment": "str",
+    "Enabled": "bool",
+    "Path": "str"
+   }
+  ],
+  "Delete": [
+   {
+    "All": "bool",
+    "Comment": "str",
+    "Enabled": "bool",
+    "OemTableId": "bytes",
+    "TableLength": "int",
+    "TableSignature": "bytes"
+   }
+  ],
+  "Patch": [
+   {
+    "Base": "str",
+    "BaseSkip": "int",
+    "Comment": "str",
+    "Count": "int",
+    "Enabled": "bool",
+    "Find": "bytes",
+    "Limit": "int",
+    "Mask": "bytes",
+    "OemTableId": "bytes",
+    "Replace": "bytes",
+    "ReplaceMask": "bytes",
+    "Skip": "int",
+    "TableLength": "int",
+    "TableSignature": "bytes"
+   }
+  ],
+  "Quirks": {
+   "FadtEnableReset": "bool",
+   "NormalizeHeaders": "bool",
+   "RebaseRegions": "bool",
+   "ResetHwSig": "bool",
+   "ResetLogoStatus": "bool",
+   "SyncTableIds": "bool"
+  }
+ },
+ "Booter": {
+  "MmioWhitelist": [
+   {
+    "Address": "int",
+    "Comment": "str",
+    "Enabled": "bool"
+   }
+  ],
+  "Patch": [
+   {
+    "Arch": "str",
+    "Comment": "str",
+    "Count": "int",
+    "Enabled": "bool",
+    "Find": "bytes",
+    "Identifier": "str",
+    "Limit": "int",
+    "Mask": "bytes",
+    "Replace": "bytes",
+    "ReplaceMask": "bytes",
+    "Skip": "int"
+   }
+  ],
+  "Quirks": {
+   "AllowRelocationBlock": "bool",
+   "AvoidRuntimeDefrag": "bool",
+   "ClearTaskSwitchBit": "bool",
+   "DevirtualiseMmio": "bool",
+   "DisableSingleUser": "bool",
+   "DisableVariableWrite": "bool",
+   "DiscardHibernateMap": "bool",
+   "EnableSafeModeSlide": "bool",
+   "EnableWriteUnprotector": "bool",
+   "FixupAppleEfiImages": "bool",
+   "ForceBooterSignature": "bool",
+   "ForceExitBootServices": "bool",
+   "ProtectMemoryRegions": "bool",
+   "ProtectSecureBoot": "bool",
+   "ProtectUefiServices": "bool",
+   "ProvideCustomSlide": "bool",
+   "ProvideMaxSlide": "int",
+   "RebuildAppleMemoryMap": "bool",
+   "ResizeAppleGpuBars": "int",
+   "SetupVirtualMap": "bool",
+   "SignalAppleOS": "bool",
+   "SyncRuntimePermissions": "bool"
+  }
+ },
+ "DeviceProperties": {
+  "Add": "*",
+  "Delete": "*"
+ },
+ "Kernel": {
+  "Add": [
+   {
+    "Arch": "str",
+    "BundlePath": "str",
+    "Comment": "str",
+    "Enabled": "bool",
+    "ExecutablePath": "str",
+    "MaxKernel": "str",
+    "MinKernel": "str",
+    "PlistPath": "str"
+   }
+  ],
+  "Block": [
+   {
+    "Arch": "str",
+    "Comment": "str",
+    "Enabled": "bool",
+    "Identifier": "str",
+    "MaxKernel": "str",
+    "MinKernel": "str",
+    "Strategy": "str"
+   }
+  ],
+  "Emulate": {
+   "Cpuid1Data": "bytes",
+   "Cpuid1Mask": "bytes",
+   "DummyPowerManagement": "bool",
+   "MaxKernel": "str",
+   "MinKernel": "str"
+  },
+  "Force": [
+   {
+    "Arch": "str",
+    "BundlePath": "str",
+    "Comment": "str",
+    "Enabled": "bool",
+    "ExecutablePath": "str",
+    "Identifier": "str",
+    "MaxKernel": "str",
+    "MinKernel": "str",
+    "PlistPath": "str"
+   }
+  ],
+  "Patch": [
+   {
+    "Arch": "str",
+    "Base": "str",
+    "Comment": "str",
+    "Count": "int",
+    "Enabled": "bool",
+    "Find": "bytes",
+    "Identifier": "str",
+    "Limit": "int",
+    "Mask": "bytes",
+    "MaxKernel": "str",
+    "MinKernel": "str",
+    "Replace": "bytes",
+    "ReplaceMask": "bytes",
+    "Skip": "int"
+   }
+  ],
+  "Quirks": {
+   "AppleCpuPmCfgLock": "bool",
+   "AppleXcpmCfgLock": "bool",
+   "AppleXcpmExtraMsrs": "bool",
+   "AppleXcpmForceBoost": "bool",
+   "CustomPciSerialDevice": "bool",
+   "CustomSMBIOSGuid": "bool",
+   "DisableIoMapper": "bool",
+   "DisableIoMapperMapping": "bool",
+   "DisableLinkeditJettison": "bool",
+   "DisableRtcChecksum": "bool",
+   "ExtendBTFeatureFlags": "bool",
+   "ExternalDiskIcons": "bool",
+   "ForceAquantiaEthernet": "bool",
+   "ForceSecureBootScheme": "bool",
+   "IncreasePciBarSize": "bool",
+   "LapicKernelPanic": "bool",
+   "LegacyCommpage": "bool",
+   "PanicNoKextDump": "bool",
+   "PowerTimeoutKernelPanic": "bool",
+   "ProvideCurrentCpuInfo": "bool",
+   "SetApfsTrimTimeout": "int",
+   "ThirdPartyDrives": "bool",
+   "XhciPortLimit": "bool"
+  },
+  "Scheme": {
+   "CustomKernel": "bool",
+   "FuzzyMatch": "bool",
+   "KernelArch": "str",
+   "KernelCache": "str"
+  }
+ },
+ "Misc": {
+  "BlessOverride": [],
+  "Boot": {
+   "ConsoleAttributes": "int",
+   "HibernateMode": "str",
+   "HibernateSkipsPicker": "bool",
+   "HideAuxiliary": "bool",
+   "InstanceIdentifier": "str",
+   "LauncherOption": "str",
+   "LauncherPath": "str",
+   "PickerAttributes": "int",
+   "PickerAudioAssist": "bool",
+   "PickerMode": "str",
+   "PickerVariant": "str",
+   "PollAppleHotKeys": "bool",
+   "ShowPicker": "bool",
+   "TakeoffDelay": "int",
+   "Timeout": "int"
+  },
+  "Debug": {
+   "AppleDebug": "bool",
+   "ApplePanic": "bool",
+   "DisableWatchDog": "bool",
+   "DisplayDelay": "int",
+   "DisplayLevel": "int",
+   "LogModules": "str",
+   "SysReport": "bool",
+   "Target": "int"
+  },
+  "Entries": [
+   {
+    "Arguments": "str",
+    "Auxiliary": "bool",
+    "Comment": "str",
+    "Enabled": "bool",
+    "Flavour": "str",
+    "Name": "str",
+    "Path": "str",
+    "TextMode": "bool"
+   }
+  ],
+  "Security": {
+   "AllowSetDefault": "bool",
+   "ApECID": "int",
+   "AuthRestart": "bool",
+   "BlacklistAppleUpdate": "bool",
+   "DmgLoading": "str",
+   "EnablePassword": "bool",
+   "ExposeSensitiveData": "int",
+   "HaltLevel": "int",
+   "PasswordHash": "bytes",
+   "PasswordSalt": "bytes",
+   "ScanPolicy": "int",
+   "SecureBootModel": "str",
+   "Vault": "str"
+  },
+  "Serial": {
+   "Init": "bool",
+   "Override": "bool"
+  },
+  "Tools": [
+   {
+    "Arguments": "str",
+    "Auxiliary": "bool",
+    "Comment": "str",
+    "Enabled": "bool",
+    "Flavour": "str",
+    "FullNvramAccess": "bool",
+    "Name": "str",
+    "Path": "str",
+    "RealPath": "bool",
+    "TextMode": "bool"
+   }
+  ]
+ },
+ "NVRAM": {
+  "Add": "*",
+  "Delete": "*",
+  "LegacyOverwrite": "bool",
+  "LegacySchema": {
+   "7C436110-AB2A-4BBB-A880-FE41995C9F82": [
+    "str"
+   ],
+   "8BE4DF61-93CA-11D2-AA0D-00E098032B8C": [
+    "str"
+   ]
+  },
+  "WriteFlash": "bool"
+ },
+ "PlatformInfo": {
+  "Automatic": "bool",
+  "CustomMemory": "bool",
+  "Generic": {
+   "AdviseFeatures": "bool",
+   "MLB": "str",
+   "MaxBIOSVersion": "bool",
+   "ProcessorType": "int",
+   "ROM": "bytes",
+   "SpoofVendor": "bool",
+   "SystemMemoryStatus": "str",
+   "SystemProductName": "str",
+   "SystemSerialNumber": "str",
+   "SystemUUID": "str"
+  },
+  "UpdateDataHub": "bool",
+  "UpdateNVRAM": "bool",
+  "UpdateSMBIOS": "bool",
+  "UpdateSMBIOSMode": "str",
+  "UseRawUuidEncoding": "bool"
+ },
+ "UEFI": {
+  "APFS": {
+   "EnableJumpstart": "bool",
+   "GlobalConnect": "bool",
+   "HideVerbose": "bool",
+   "JumpstartHotPlug": "bool",
+   "MinDate": "int",
+   "MinVersion": "int"
+  },
+  "AppleInput": {
+   "AppleEvent": "str",
+   "CustomDelays": "bool",
+   "GraphicsInputMirroring": "bool",
+   "KeyInitialDelay": "int",
+   "KeySubsequentDelay": "int",
+   "PointerDwellClickTimeout": "int",
+   "PointerDwellDoubleClickTimeout": "int",
+   "PointerDwellRadius": "int",
+   "PointerPollMask": "int",
+   "PointerPollMax": "int",
+   "PointerPollMin": "int",
+   "PointerSpeedDiv": "int",
+   "PointerSpeedMul": "int"
+  },
+  "Audio": {
+   "AudioCodec": "int",
+   "AudioDevice": "str",
+   "AudioOutMask": "int",
+   "AudioSupport": "bool",
+   "DisconnectHda": "bool",
+   "MaximumGain": "int",
+   "MinimumAssistGain": "int",
+   "MinimumAudibleGain": "int",
+   "PlayChime": "str",
+   "ResetTrafficClass": "bool",
+   "SetupDelay": "int"
+  },
+  "ConnectDrivers": "bool",
+  "Drivers": [
+   {
+    "Arguments": "str",
+    "Comment": "str",
+    "Enabled": "bool",
+    "HideVerbose": "bool",
+    "LoadEarly": "bool",
+    "Path": "str"
+   }
+  ],
+  "Input": {
+   "KeyFiltering": "bool",
+   "KeyForgetThreshold": "int",
+   "KeySupport": "bool",
+   "KeySupportMode": "str",
+   "KeySwap": "bool",
+   "PointerSupport": "bool",
+   "PointerSupportMode": "str",
+   "TimerResolution": "int"
+  },
+  "Output": {
+   "ClearScreenOnModeSwitch": "bool",
+   "ConsoleFont": "str",
+   "ConsoleMode": "str",
+   "DirectGopRendering": "bool",
+   "ForceResolution": "bool",
+   "GopBurstMode": "bool",
+   "GopPassThrough": "str",
+   "IgnoreTextInGraphics": "bool",
+   "InitialMode": "str",
+   "ProvideConsoleGop": "bool",
+   "ReconnectGraphicsOnConnect": "bool",
+   "ReconnectOnResChange": "bool",
+   "ReplaceTabWithSpace": "bool",
+   "Resolution": "str",
+   "SanitiseClearScreen": "bool",
+   "TextRenderer": "str",
+   "UIScale": "int",
+   "UgaPassThrough": "bool"
+  },
+  "ProtocolOverrides": {
+   "AppleAudio": "bool",
+   "AppleBootPolicy": "bool",
+   "AppleDebugLog": "bool",
+   "AppleEg2Info": "bool",
+   "AppleFramebufferInfo": "bool",
+   "AppleImageConversion": "bool",
+   "AppleImg4Verification": "bool",
+   "AppleKeyMap": "bool",
+   "AppleRtcRam": "bool",
+   "AppleSecureBoot": "bool",
+   "AppleSmcIo": "bool",
+   "AppleUserInterfaceTheme": "bool",
+   "DataHub": "bool",
+   "DeviceProperties": "bool",
+   "FirmwareVolume": "bool",
+   "HashServices": "bool",
+   "OSInfo": "bool",
+   "PciIo": "bool",
+   "UnicodeCollation": "bool"
+  },
+  "Quirks": {
+   "ActivateHpetSupport": "bool",
+   "DisableSecurityPolicy": "bool",
+   "EnableVectorAcceleration": "bool",
+   "EnableVmx": "bool",
+   "ExitBootServicesDelay": "int",
+   "ForceOcWriteFlash": "bool",
+   "ForgeUefiSupport": "bool",
+   "IgnoreInvalidFlexRatio": "bool",
+   "ReleaseUsbOwnership": "bool",
+   "ReloadOptionRoms": "bool",
+   "RequestBootVarRouting": "bool",
+   "ResizeGpuBars": "int",
+   "ResizeUsePciRbIo": "bool",
+   "ShimRetainProtocol": "bool",
+   "TscSyncTimeout": "int",
+   "UnblockFsConnect": "bool"
+  },
+  "ReservedMemory": [
+   {
+    "Address": "int",
+    "Comment": "str",
+    "Enabled": "bool",
+    "Size": "int",
+    "Type": "str"
+   }
+  ],
+  "Unload": []
+ }
+}
