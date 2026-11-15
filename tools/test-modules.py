@@ -536,6 +536,23 @@ def test_debian_compat():
     check("macOS indirme: Apple imajı için UDIF kuyruk (koly) kontrolü",
           "koly" in fm and "tail" in fm)
 
+    # 10d) PANEL (macnix-setup) — modern + taşınabilir/kapanabilir terminal
+    #   2026-11-15 kullanıcı isteği: "terminal modern olsun, hareket ettirilebilir,
+    #   kapanabilir, tekrar açılabilir olsun; sabit durup kullanımı engelliyor."
+    su = open(os.path.join(ROOT, "scripts/bin/macnix-setup"), encoding="utf-8").read()
+    check("panel: terminal paneli aç/kapat düğmesi var",
+          "def toggle_terminal(" in su and "Konsol Aç" in su)
+    check("panel: terminal ✕ ile kapanıp yeniden açılabiliyor",
+          'btn_term_hide' in su and "term_show(False)" in su and "term_show(True)" in su)
+    check("panel: pencere başlıktan sürüklenebiliyor",
+          "begin_move_drag" in su and "_start_drag" in su)
+    check("panel: klavye kısayolları (Ctrl+T terminal, Ctrl+Q kapat)",
+          "Gdk.KEY_t" in su and "Gdk.KEY_q" in su)
+    check("panel: modern tema (GTK CSS sağlayıcısı)",
+          "CssProvider" in su and "STYLE_PROVIDER_PRIORITY_APPLICATION" in su)
+    check("panel: 'macOS'u başlat' hatayı canlı günlüğe akıyor",
+          '["macnix-vm", "start"]' in su and "başlatılamadı" in su)
+
     # 10c) VM BAŞLATMA: CPU listesi / taskset / KVM-TCG geri dönüşü
     #   2026-11-15 canlı hata: `$(( {} - 1 ))` bash aritmetiği hatası yüzünden
     #   CPU listesi boş kalıyor, taskset boş maskeyle çalışıp QEMU düşüyordu.
