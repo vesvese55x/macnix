@@ -565,7 +565,8 @@ def test_debian_compat():
     # 10i) ŞEMA DENETLEYİCİSİ (bağımsız araç) — gerçek config üzerinde çalışıyor mu?
     import subprocess, tempfile
     sc = os.path.join(ROOT, "tools/oc-schema-check.py")
-    check("tools/oc-schema-check.py var ve çalıştırılabilir", os.access(sc, os.X_OK))
+    check("tools/oc-schema-check.py repoda (GitHub 644 verir → izin bitine bakmıyoruz)",
+          os.path.exists(sc) and os.path.getsize(sc) > 1000)
     # Şema uyumlu bir config → 0 dönmeli
     good = {"ACPI": {"Add": [], "Delete": [], "Patch": [], "Quirks": {
                 "FadtEnableReset": False, "NormalizeHeaders": False, "RebaseRegions": False,
