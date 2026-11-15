@@ -50,8 +50,36 @@ case "${1:-start}" in
   status)  exec_status=1 ;;
   console) exec_console=1 ;;
   doctor)  exec /usr/local/bin/macnix-doctor ;;
+  # Hızlandırma raporu: KVM var mı, yoksa NEDEN yok (BIOS mu, iç içe VM mi)?
+  accel)
+    say "Sanallaştırma hızlandırma durumu"
+    if [[ -e /dev/kvm && -w /dev/kvm ]]; then
+      ok "/dev/kvm var ve yazılabilir → QEMU KVM kullanacak (tam hız)"
+      ok "CPU: -cpu host (tüm özellikler macOS'a açık)"
+      exit 0
+    fi
+    warn "/dev/kvm yok → QEMU yazılım emülasyonu (TCG) kullanacak: ~10-20× yavaş"
+    if grep -qw hypervisor /proc/cpuinfo 2>/dev/null; then
+      say "Sebep: bu makine zaten bir sanal makine (iç içe sanallaştırma kapalı)."
+      say "Yapılacaklar (ana makinede):"
+      printf '   • VMware Workstation/Player : VM ayarları → Processors → \"Virtualize Intel VT-x/EPT\"\n'
+      printf '   • VirtualBox                : Ayarlar → Sistem → Hızlandırma → Nested Paging + VT-x/AMD-V\n'
+      printf '   • KVM/QEMU ana makine       : <cpu mode=\"host-passthrough\"> + <feature policy=\"require\" name=\"vmx\"/>\n'
+      printf '   • Hyper-V                   : Set-VMProcessor -VMName <ad> -ExposeVirtualizationExtensions $true\n'
+      printf '   • Bulut VM (AWS/GCP/Azure)  : iç içe sanallaştırma destekli tip seçin (ör. *.metal, N2 + nested)\n'
+    else
+      say "Sebep: CPU sanallaştırma uzantısı (VT-x / AMD-V) BIOS'ta kapalı olabilir."
+      say "Yapılacaklar:"
+      printf '   • BIOS/UEFI → Advanced/CPU → Intel VT-x ya da AMD SVM = Enabled\n'
+      printf '   • Linux tarafı: modprobe kvm_intel (veya kvm_amd); ls -l /dev/kvm\n'
+      printf '   • KVM modülleri yoksa: çekirdek paketi + microcode güncellemesi\n'
+    fi
+    say "Not: KVM olmadan da macOS açılmaya çalışılır; OpenCore'un geç aşaması"
+    say "     yazılım emülasyonunda saatler alabilir. KVM olmadan performans garantisi YOKTUR."
+    exit 1
+    ;;
   shell)   MODE="${2:-installed}"; only_print=1 ;;
-  *)       die "Bilinmeyen komut: $1 (start|install|stop|status|console|doctor|shell)" ;;
+  *)       die "Bilinmeyen komut: $1 (start|install|stop|status|console|doctor|accel|shell)" ;;
 esac
 
 # ── Yapılandırma ─────────────────────────────────────────────────────────────
@@ -168,8 +196,20 @@ if [[ -e /dev/kvm ]] && [[ -w /dev/kvm ]]; then
 else
   QEMU_ACCEL="tcg"
   ACCEL_DESC="TCG (yazılım emülasyonu — yavaş)"
-  warn "/dev/kvm yok ya da erişilemiyor — yazılım emülasyonu kullanılacak"
-  warn "Donanım hızlandırma için BIOS'ta SVM/VT-x açın (macnix-vm doctor)"
+  # İç içe sanallaştırma teşhisi: makine zaten bir hypervisor içinde çalışıyorsa
+  # BIOS ayarı DEĞİL, ana hypervisor'ın "nested virtualization" ayarı gerekir.
+  # (2026-11-15: bu sandbox KVM konuğu; /proc/cpuinfo'da "hypervisor" var ve
+  #  konuğa vmx/svm bayrakları verilmemiş → /dev/kvm oluşmuyor.)
+  if grep -qw hypervisor /proc/cpuinfo 2>/dev/null; then
+    warn "/dev/kvm yok — bu makine bir sanal makine içinde çalışıyor"
+    warn "Çözüm: ana makinede iç içe sanallaştırmayı (nested virtualization) açın"
+    warn "  • VMware/VirtualBox: CPU ayarlarında 'VT-x/AMD-V' + 'nested' seçeneği"
+    warn "  • KVM ana makine: <cpu mode='host-passthrough'><feature policy='require' name='vmx'/>"
+    warn "  • Windows Hyper-V: 'Set-VMProcessor -ExposeVirtualizationExtensions $true'"
+  else
+    warn "/dev/kvm yok ya da erişilemiyor — yazılım emülasyonu kullanılacak"
+    warn "Donanım hızlandırma için BIOS'ta SVM/VT-x açın (macnix-vm accel)"
+  fi
 fi
 [[ -f "$DISK" ]] || die "macOS diski yok: $DISK (macnix-setup çalıştırılmamış)"
 [[ -f "$OVMF_CODE" ]] || die "OVMF firmware yok: $OVMF_CODE"
@@ -284,9 +324,14 @@ if [[ "$QEMU_ACCEL" != "kvm" ]] && (( VM_CORES > 2 )); then
   VM_CORES=2
 fi
 CPU_ARGS=(-smp "${VM_CORES},cores=${VM_CORES},threads=1,sockets=1")
-# `-cpu host` yalnızca KVM ile geçerli; yazılım modunda Penryn profiline düşülür
-if [[ "$ARCH_PROFILE" == "vfio" && "$QEMU_ACCEL" == "kvm" ]]; then
+# CPU modeli — PERFORMANS (2026-11-15):
+#   • KVM varsa `-cpu host` kullanılır (OSX-KVM ile aynı yaklaşım): tüm CPU
+#     özellikleri geçer, macOS hızlandırılmış çalışır. `+invtsc` macOS'un
+#     saat/timer hesapları için kritik.
+#   • KVM yoksa (TCG) Penryn profiline düşülür — yavaş ama açılır.
+if [[ "$QEMU_ACCEL" == "kvm" ]]; then
   CPU_ARGS+=(-cpu host,kvm=on,vendor=GenuineIntel,+invtsc,+kvm_pv_unhalt,+kvm_pv_eoi,+hypervisor,+ssse3,+sse4.2,+popcnt,+aes,+xsave,+avx,+avx2,check=off)
+  ok "CPU: host profili (KVM — tüm özellikler açık)"
 else
   CPU_ARGS+=(-cpu Penryn,kvm=on,vendor=GenuineIntel,+ssse3,+sse4.2,+popcnt,+aes,+xsave,+xsaveopt,+hypervisor,vmware-cpuid-freq=on,check=off)
 fi
@@ -402,6 +447,9 @@ Q=(
   # ALSA hatalarıyla gürültü yapıyordu (canlı test).
   # (AUDIO_ARGS aşağıda belirlenir)
   "${AUDIO_ARGS[@]}"
+  # Seri günlük — OpenCore/macOS önyükleme teşhisi. 2026-11-15'te OpenCore'un
+  # hangi aşamada durduğunu YALNIZCA bu günlük gösterdi; kalıcı olsun.
+  -serial "file:${MACNIX_VAR}/logs/serial.log"
   # Yönetim: QMP + VNC (localhost)
   -qmp "unix:${MONITOR_SOCK},server,nowait"
   -vnc "127.0.0.1:${VNC_DISPLAY}"
