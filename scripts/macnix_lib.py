@@ -483,7 +483,11 @@ def build_opencore_config(plan: dict, serials: dict, amd_patches: list[dict] | N
     Çağıran taraf plistlib ile yazar. Şablon dosyasına bağımlı değildir;
     böylece eski şablonun bozuk/eksik anahtarları miras alınmaz.
     """
-    is_amd = plan.get("cpu_vendor") == "amd" or plan.get("needs_amd_patches")
+    # bool() ŞART: plan'da "needs_amd_patches" yoksa ifade None döner ve
+    # ProvideCurrentCpuInfo=None olarak plist'e yazılmaya çalışılınca
+    # plistlib "unsupported type: NoneType" atıp config HİÇ üretilmiyordu
+    # (2026-11-15'te yakalandı).
+    is_amd = bool(plan.get("cpu_vendor") == "amd" or plan.get("needs_amd_patches"))
     boot_args = ["-v", "keepsyms=1", "debug=0x100", "alcid=11", "npci=0x2000"]
     if plan.get("arch") == "virtio":
         boot_args += ["-igfxvesa", "nv_disable=1"]
@@ -544,7 +548,7 @@ def build_opencore_config(plan: dict, serials: dict, amd_patches: list[dict] | N
                      "Timeout": 3, "ShowPicker": True, "PollAppleHotKeys": True,
                      "TakeoffDelay": 0, "HideAuxiliary": False},
             "Debug": {"AppleDebug": False, "ApplePanic": True, "DisableWatchDog": True,
-                      "DisplayDelay": 0, "DisplayLevel": 0, "SerialInit": False,
+                      "DisplayDelay": 0, "DisplayLevel": 0,
                       "SysReport": False, "Target": 3},
             "Security": {"AllowSetDefault": True, "BlacklistAppleUpdate": True, "DmgLoading": "Signed",
                          "EnablePassword": False, "ExposeSensitiveData": 6, "HaltLevel": 2147483650,
@@ -595,9 +599,10 @@ def build_opencore_config(plan: dict, serials: dict, amd_patches: list[dict] | N
         "UEFI": {
             "APFS": {"EnableJumpstart": True, "GlobalConnect": False, "HideVerbose": True,
                      "JumpstartHotPlug": False, "MinDate": 0, "MinVersion": 0},
-            "Audio": {"AudioCodec": 0, "AudioDevice": "", "AudioOut": 0, "AudioSupport": False,
-                      "MinimumVolume": 20, "PlayChime": "Auto", "ResetTrafficClass": False,
-                      "SetupDelay": 0, "VoiceOver": False},
+            "Audio": {"AudioCodec": 0, "AudioDevice": "", "AudioOutMask": 1, "AudioSupport": False,
+                      "DisconnectHda": False, "MaximumGain": 0, "MinimumAssistGain": -30,
+                      "MinimumAudibleGain": -55, "PlayChime": "Auto", "ResetTrafficClass": False,
+                      "SetupDelay": 0},
             "ConnectDrivers": True,
             "Drivers": [
                 {"Path": "OpenRuntime.efi", "Enabled": True, "LoadEarly": False, "Comment": "Zorunlu runtime"},
@@ -605,7 +610,7 @@ def build_opencore_config(plan: dict, serials: dict, amd_patches: list[dict] | N
                 {"Path": "ResetNvramEntry.efi", "Enabled": True, "LoadEarly": False, "Comment": "NVRAM sifirlama"},
             ],
             "Input": {"KeyFiltering": False, "KeyForgetThreshold": 5, "KeySupport": True,
-                      "KeySupportMode": "Auto", "KeyMergeThreshold": 2, "KeySupport": True,
+                      "KeySwap": False, "KeySupportMode": "Auto",
                       "PointerSupport": False, "PointerSupportMode": "", "TimerResolution": 50000},
             "Output": {"ClearScreenOnModeSwitch": True, "ConsoleMode": "", "DirectGopRendering": False,
                        "ForceResolution": False, "GopBurstMode": False, "IgnoreTextInGraphics": False,
@@ -624,12 +629,11 @@ def build_opencore_config(plan: dict, serials: dict, amd_patches: list[dict] | N
             "Quirks": {
                 "ActivateHpetSupport": False, "DisableSecurityPolicy": False,
                 "EnableVectorAcceleration": True, "EnableVmx": False, "ExitBootServicesDelay": 0,
-                "ForceOemVolumeHack": False, "IgnoreInvalidFlexRatio": False,
+                "ForceOcWriteFlash": False, "IgnoreInvalidFlexRatio": False,
                 "ReleaseUsbOwnership": True, "RequestBootVarRouting": True,
                 "ResizeGpuBars": -1, "TscSyncTimeout": 0, "UnblockFsConnect": False,
             },
             "ReservedMemory": [],
-            "DriveInput": {},
         },
     }
     return cfg
