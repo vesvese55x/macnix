@@ -276,15 +276,79 @@ fi
 # ============================================================================
 #  QEMU argümanları
 # ============================================================================
+# ── OpenGL (virgl) desteği ──────────────────────────────────────────────────
+QEMU_GL=0
+if [[ -e /dev/dri/renderD128 ]] && command -v glxinfo >/dev/null 2>&1 \
+   && glxinfo -B 2>/dev/null | grep -qi "OpenGL renderer"; then
+  QEMU_GL=1
+fi
+
+# ── Ses aygıtı ──────────────────────────────────────────────────────────────
+AUDIO_ARGS=()
+if [[ -s /proc/asound/cards ]] && grep -qE '^ *[0-9]+ \[' /proc/asound/cards 2>/dev/null; then
+  AUDIO_ARGS=(-device intel-hda -device hda-duplex)
+else
+  # Ses aygıtı yoksa sürücü tamamen kapatılır; aksi hâlde QEMU log'u
+  # PulseAudio/ALSA hatalarıyla doluyordu (canlı test).
+  AUDIO_ARGS=(-audiodev none,id=snd0)
+  warn "host'ta ses aygıtı yok — VM sesi kapalı"
+fi
+
+# ── MAC adresi ──────────────────────────────────────────────────────────────
+VM_MAC="52:54:00$(python3 - <<'PYMAC'
+import os
+print(''.join(':%02x' % b for b in os.urandom(3)))
+PYMAC
+)"
+# ROM'dan türetilebiliyorsa sabit kalsın (aynı VM kimliği tekrar açılsın)
+if [[ -n "${SMBIOS_ROM:-}" ]]; then
+  _rom=$(echo "$SMBIOS_ROM" | tr -cd '0-9a-fA-F' | cut -c1-6)
+  if [[ ${#_rom} -eq 6 ]]; then
+    VM_MAC="52:54:00:$(echo "$_rom" | sed 's/\(..\)/\1:/g;s/:$//')"
+  fi
+fi
+
+# ── Bellek koruması ─────────────────────────────────────────────────────────
+# DİKKAT (2026-11-15 canlı test): 4 GB istenip host'ta yer yoksa QEMU
+# "cannot set up guest memory 'pc.ram'" ile HİÇ açılmıyordu. Kullanılabilir
+# belleğin üstünde istemek yerine güvenli değere düşülür.
+MEM_AVAIL_MB=$(awk '/MemAvailable:/ {print int($2/1024)}' /proc/meminfo)
+MEM_AVAIL_MB=${MEM_AVAIL_MB:-0}
+MEM_LOCK="on"
+if (( MEM_AVAIL_MB > 0 && VM_RAM_MB > MEM_AVAIL_MB - 512 )); then
+  NEW_RAM=$(( MEM_AVAIL_MB - 768 ))
+  (( NEW_RAM < 1536 )) && NEW_RAM=1536
+  warn "VM belleği ${VM_RAM_MB} MB → ${NEW_RAM} MB (host'ta yalnızca ${MEM_AVAIL_MB} MB kullanılabilir)"
+  VM_RAM_MB=$NEW_RAM
+  MEM_LOCK="off"
+fi
+
+# ── Disk önbellek modu: O_DIRECT destekleniyor mu? ─────────────────────────
+# O_DIRECT desteklenmiyorsa (overlayfs, tmpfs, NFS) cache=none/aio=native
+# kombinasyonu QEMU'yu "filesystem does not support O_DIRECT" ile düşürür.
+CACHE_MODE="none"; AIO_MODE="native"
+if ! dd if=/dev/zero of="$(dirname "$DISK")/.odirect-test" bs=4k count=1 \
+        oflag=direct status=none 2>/dev/null; then
+  CACHE_MODE="writeback"; AIO_MODE="threads"
+  warn "disk: O_DIRECT yok — cache=writeback/aio=threads kullanılacak"
+fi
+rm -f "$(dirname "$DISK")/.odirect-test" 2>/dev/null || true
+
 Q=(
   -name macnix,process=macos-vm
-  -machine "q35,accel=${QEMU_ACCEL},kernel_irqchip=on,vmport=off"
-  -overcommit mem-lock=on
+  -machine "q35,accel=${QEMU_ACCEL},kernel_irqchip=on,vmport=off,hpet=off"
+  -overcommit "mem-lock=${MEM_LOCK}"
   -m "${VM_RAM_MB}"
   "${MEM_ARGS[@]}"
   "${CPU_ARGS[@]}"
   -device isa-applesmc,osk="ourhardworkbythesewordsguardedpleasedontsteal(c)AppleComputerInc"
-  -smbios "type=2,manufacturer=Apple Inc.,product=${SMBIOS_MODEL}"
+  # DİKKAT (2026-11-15 canlı test, QEMU 10.0): model adı "iMacPro1,1" içindeki
+  # VİRGÜL seçenek ayrıştırıcısını bölüyordu → "Invalid parameter '1'" hatası ve
+  # QEMU HİÇ açılmıyordu. Backslash kaçışı (\,) bu QEMU sürümünde İŞE YARAMIYOR
+  # (denendi). Çözüm: üretici/ürün alanlarına virgül girmeyen değer yazmak.
+  # Apple kimliği için model kodu ayrıca type=1 (version/serial) alanında
+  # taşınır; OpenCore/SMBIOS enjeksiyonu asıl kimliği zaten kendisi verir.
+  -smbios "type=2,manufacturer=Apple Inc.,product=${SMBIOS_MODEL//,/-}"
   -global ICH9-LPC.acpi-pci-hotplug-with-bridge-support=off
   -global nec-usb-xhci.msi=off
   -device qemu-xhci,id=xhci
@@ -293,23 +357,35 @@ Q=(
   # Firmware
   -drive "if=pflash,format=raw,readonly=on,file=${OVMF_CODE}"
   -drive "if=pflash,format=raw,file=${OVMF_VARS_RUN}"
-  # OpenCore
-  -drive "id=OC,if=none,format=qcow2,file=${OC_IMG}"
-  -device "ide-hd,bus=sata.2,drive=OC"
+  # OpenCore — q35'te "sata.2" yolu YOKTUR (canlı test: "Bus 'sata.2' not found",
+  # QEMU hiç açılmıyordu). AHCI denetleyicisine disk olarak bağlanır; OpenCore
+  # firmware'den ÖNCE yüklenmesin diye bootindex verilmez.
+  -drive "id=OC,if=none,format=qcow2,file=${OC_IMG},cache=${CACHE_MODE}"
+  -device "ide-hd,bus=ide.1,drive=OC"
   # macOS diski — virtio-blk + iothread + AIO
   -object iothread,id=io0
-  -drive "id=MacHDD,if=none,format=qcow2,file=${DISK},cache=none,aio=native,discard=unmap,detect-zeroes=unmap"
+  # cache=none + aio=native, O_DIRECT desteklemeyen dosya sistemlerinde
+  # (overlayfs, bazı tmpfs/NFS) QEMU'yu hiç açtırmıyordu. CACHE_MODE/AIO_MODE
+  # aşağıda FS'e göre seçilir.
+  -drive "id=MacHDD,if=none,format=qcow2,file=${DISK},cache=${CACHE_MODE},aio=${AIO_MODE},discard=unmap,detect-zeroes=unmap"
   -device "virtio-blk-pci,drive=MacHDD,iothread=io0,bootindex=2"
   # Ağ
   -netdev "user,id=net0,hostfwd=tcp:127.0.0.1:2222-:22"
-  -device "virtio-net-pci,netdev=net0,mac=52:54:00:$(echo "$SMBIOS_ROM" | cut -c1-6 | sed 's/\(..\)/\1:/g;s/:$//')"
-  # Ses
-  -device intel-hda -device hda-duplex
+  # MAC adresi: SMBIOS_ROM boşsa eski kod "52:54:00:" üretiyor ve QEMU
+  # "Property 'mac' doesn't take value" diyerek AÇILMIYORDU (canlı test).
+  # Her zaman 6 geçerli oktet üretilir.
+  -device "virtio-net-pci,netdev=net0,mac=${VM_MAC}"
+  # Ses — yalnızca host'ta gerçek ses aygıtı varsa eklenir. Yoksa QEMU
+  # ALSA hatalarıyla gürültü yapıyordu (canlı test).
+  # (AUDIO_ARGS aşağıda belirlenir)
+  "${AUDIO_ARGS[@]}"
   # Yönetim: QMP + VNC (localhost)
   -qmp "unix:${MONITOR_SOCK},server,nowait"
   -vnc "127.0.0.1:${VNC_DISPLAY}"
   -rtc base=utc,clock=host,driftfix=slew
-  -no-hpet
+  # DİKKAT (2026-11-15 canlı test): `-no-hpet` seçeneği QEMU 8+ sürümlerinde
+  # KALDIRILDI; qemu "invalid option" deyip hiç açılmıyordu. HPET'i kapatmanın
+  # güncel yolu makine özelliği: hpet=off. Hem eski hem yeni QEMU'da geçerli.
   -pidfile "$PID_FILE"
 )
 
@@ -349,7 +425,14 @@ if [[ "$ARCH_PROFILE" == "vfio" && -n "$PT_GPUS" ]]; then
   Q+=(-device virtio-vga,max_outputs=1 -display none)
 else
   say "Yazılım render modu (virtio-gpu)"
-  Q+=(-device "virtio-vga-gl,edid=on,xres=1920,yres=1080" -display none)
+  # DİKKAT (2026-11-15 canlı test): virtio-vga-gl yalnızca GL'li bir display
+  # backend'i ister. VNC'de OpenGL yok → QEMU "display backend does not have
+  # OpenGL support" deyip HİÇ açılmıyordu. GL yoksa düz virtio-vga kullanılır.
+  if [[ "${QEMU_GL:-0}" == "1" ]]; then
+    Q+=(-device "virtio-vga-gl,edid=on,xres=1920,yres=1080" -display none)
+  else
+    Q+=(-device "virtio-vga,edid=on,xres=1920,yres=1080" -display none)
+  fi
 fi
 
 # ── Kurulum medyası ─────────────────────────────────────────────────────────
@@ -358,7 +441,8 @@ if [[ "$MODE" == "install" ]]; then
   ok "Kurulum modu: BaseSystem.img takılı"
   Q+=(
     -drive "id=InstallMedia,if=none,format=raw,file=${BASE_IMG}"
-    -device "ide-hd,bus=sata.3,drive=InstallMedia,bootindex=1"
+    # q35'te sata.3 yolu yok; ikinci IDE yuvası kullanılır (canlı test).
+    -device "ide-hd,bus=ide.0,drive=InstallMedia"
   )
 fi
 
