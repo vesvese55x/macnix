@@ -181,6 +181,24 @@ if [[ -f "$PID_FILE" ]] && kill -0 "$(cat "$PID_FILE")" 2>/dev/null; then
   exit 0
 fi
 
+# ── NVRAM deposu (kalıcı UEFI değişkenleri) ─────────────────────────────────
+# OVMF_VARS_QCOW2: misafirin yazdığı UEFI değişkenleri (boot sırası, macOS
+# NVRAM'i) burada saklanır. qcow2 sarmalayıcı, host dosya sisteminde O_DIRECT
+# olmasa da çalışır ve 4 MB'lık pflash boyutunu korur.
+OVMF_VARS_QCOW2="$MACNIX_VAR/firmware/OVMF_VARS.qcow2"
+mkdir -p "$MACNIX_VAR/firmware"
+if [[ ! -f "$OVMF_VARS_QCOW2" ]] || [[ "${MACNIX_FRESH_NVRAM:-0}" == "1" ]]; then
+  base_vars=""
+  for c in "$OVMF_VARS_MASTER" /usr/share/OVMF/OVMF_VARS_4M.fd \
+           /usr/share/OVMF/OVMF_VARS.fd /usr/share/edk2/ovmf/OVMF_VARS.fd; do
+    [[ -f "$c" && -s "$c" ]] && { base_vars="$c"; break; }
+  done
+  [[ -n "$base_vars" ]] || die "OVMF_VARS dosyası bulunamadı (ovmf paketi kurulu mu?)"
+  qemu-img convert -f raw -O qcow2 "$base_vars" "$OVMF_VARS_QCOW2" \
+    2>/dev/null || cp -f "$base_vars" "$OVMF_VARS_QCOW2"
+  say "NVRAM deposu oluşturuldu (${base_vars##*/})"
+fi
+
 # ── Çalışma zamanı OVMF_VARS (değişkenler diske yazılır, master korunur) ─────
 if [[ ! -f "$OVMF_VARS_RUN" ]] || [[ "${MACNIX_FRESH_NVRAM:-0}" == "1" ]]; then
   cp -f "$OVMF_VARS_MASTER" "$OVMF_VARS_RUN" 2>/dev/null || \
@@ -355,8 +373,13 @@ Q=(
   -device usb-kbd,bus=xhci.0
   -device usb-tablet,bus=xhci.0
   # Firmware
+  # UEFI değişkenleri (NVRAM) — KALICI. DİKKAT (2026-11-15 canlı test):
+  # pflash ile verilen değişken deposu misafirde kalıcı olmuyordu; UEFI her
+  # açılışta NVRAM'i sıfırlıyor, macOS "boot device" bulamıyordu.
+  # Çözüm: VARS dosyası qcow2'ye sarılıp pflash olarak verilir; qemu-img
+  # convert ile geri alınabilir (aşağıdaki sync_nvram).
   -drive "if=pflash,format=raw,readonly=on,file=${OVMF_CODE}"
-  -drive "if=pflash,format=raw,file=${OVMF_VARS_RUN}"
+  -drive "if=pflash,format=qcow2,file=${OVMF_VARS_QCOW2}"
   # OpenCore — q35'te "sata.2" yolu YOKTUR (canlı test: "Bus 'sata.2' not found",
   # QEMU hiç açılmıyordu). AHCI denetleyicisine disk olarak bağlanır; OpenCore
   # firmware'den ÖNCE yüklenmesin diye bootindex verilmez.
