@@ -25,3 +25,16 @@ macnix ALL=(root) NOPASSWD: /usr/local/bin/macnix-setup
 macnix ALL=(root) NOPASSWD: /usr/local/bin/macnix-fetch-macos
 macnix ALL=(root) NOPASSWD: /usr/bin/calamares
 macnix ALL=(root) NOPASSWD: /bin/systemctl restart macnix-vm.service
+
+# ── ŞİFRESİZ SUDO (kullanıcı isteği: hiçbir yerde parola sorulmasın) ───────
+# 2026-11-15 CANLI HATA: yukarıdaki komut-bazlı kurallar yalnızca MacNix
+# araçlarını kapsıyordu. Kullanıcı terminalde `sudo apt install ...` yazınca
+# ya da bir sistem aracı yetki isteyince "parola gerekli" uyarısı çıkıyordu.
+# Kurulumda parola HİÇ belirlenmediği için (users.conf: boş parola) bu uyarı
+# geçilemiyordu — kullanıcı çıkmazda kalıyordu.
+#
+# Çözüm: kurulumda oluşturulan hesap %sudo grubunda (users.conf:
+# sudoersGroup: sudo, defaultGroups: sudo). %sudo için NOPASSWD veriyoruz.
+# "99-" öneki sayesinde Calamares'in yazdığı 10-installer kuralından SONRA
+# okunur ve onu ezer.
+%sudo ALL=(ALL:ALL) NOPASSWD: ALL
