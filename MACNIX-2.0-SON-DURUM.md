@@ -2,16 +2,16 @@
 
 **Tarih:** 15 Kasım 2026
 **ISO:** `macnix-2.0.0-amd64.iso` — 1241.9 MB
-**SHA256:** `92c4d480349f9d987eade25cc21d175e009e6e25815ed8a2b9cf6086de1e5128`
-**Release:** tek sürüm `v2.0.0-402`, adı **"MacNix 2.0.0 (build 402)"** (önceki tüm release'ler silindi)
-**İndirme:** https://github.com/vesvese55x/macnix/releases/download/v2.0.0-402/macnix-2.0.0-amd64.iso
+**SHA256:** `8ff6ffe47016e04703e8a3d4f59dcf0b0ee8e0e96a82c674281425971e9bc06c`
+**Release:** tek sürüm `v2.0.0-403`, adı **"MacNix 2.0.0 (build 403)"** (önceki tüm release'ler silindi)
+**İndirme:** https://github.com/vesvese55x/macnix/releases/download/v2.0.0-403/macnix-2.0.0-amd64.iso
 
 > MacNix, Gelişmiş macOS Sanallaştırma Distrosu olup, BELGESELSEMO tarafından
 > ARENA.AI sayesinde https://github.com/local-over/macnix orijinal Github reposundan
 > fork edilerek geliştirilmiştir. — http://belgeselsemo.com.tr/
 
 **Testler:** `tools/test-modules.py` **188 geçen / 0 hata** · `tools/validate.sh` **66 geçen / 13 uyarı / 0 hata**
-**CI:** run `43745459187` → **success (3/3 job)**
+**CI:** run `43749145205` → **success (3/3 job)**
 
 ---
 
@@ -19,12 +19,12 @@
 
 | Öğe | Değer |
 |---|---|
-| Release | **`v2.0.0-402`** (tek release — önceki tüm sürümler silindi) |
-| ISO | `macnix-2.0.0-amd64.iso` — **1241,9 MB** |
-| SHA256 | **`92c4d480349f9d987eade25cc21d175e009e6e25815ed8a2b9cf6086de1e5128`** |
+| Release | **`v2.0.0-403`** (tek release — önceki tüm sürümler silindi) |
+| ISO | `macnix-2.0.0-amd64.iso` — **1242,4 MB** |
+| SHA256 | **`8ff6ffe47016e04703e8a3d4f59dcf0b0ee8e0e96a82c674281425971e9bc06c`** |
 | CI | run `43745459187` — **3/3 job success** (validate → build → release) |
 | Testler | `test-modules.py` **188 geçen / 0 hata**, `validate.sh` **66 geçen / 13 uyarı / 0 hata** |
-| URL | https://github.com/vesvese55x/macnix/releases/tag/v2.0.0-402 |
+| URL | https://github.com/vesvese55x/macnix/releases/tag/v2.0.0-403 |
 
 Bu ISO, bu turdaki **OpenCore şema düzeltmesini, KVM/nested teşhisini, ANSI
 temizliğini ve parolasız erişim sıkılaştırmasını** içeriyor.
@@ -32,8 +32,8 @@ temizliğini ve parolasız erişim sıkılaştırmasını** içeriyor.
 ### 0.1 Yayınlanan ISO gerçekten indirilip, AÇILIP, sihirbaz görülene kadar test edildi
 
 ```
-curl → /home/user/iso/macnix-402.iso   1.302.548.480 bayt (1241,9 MiB / 1302,5 MB)
-sha256sum → 92c4d480349f9d987eade25cc21d175e009e6e25815ed8a2b9cf6086de1e5128  ✓ birebir
+curl → /home/user/iso/macnix-403.iso   1.302.786.048 bayt (1242,4 MiB)
+sha256sum → 8ff6ffe47016e04703e8a3d4f59dcf0b0ee8e0e96a82c674281425971e9bc06c  ✓ birebir
 7z l      → live/filesystem.squashfs + boot/grub/efi.img + unicode.pf2  ✓
 ```
 
@@ -46,6 +46,10 @@ ESP olarak bağlanıp QEMU ile açıldı. Sonuç **ekran görüntüsüyle** doğ
 Install/License/Finish, dil açılır kutusu **"American English"** = varsayılan İngilizce ✓,
 alt solda **"Abo / Deb"** = zorunlu kredi + `belgeselsemo.com.tr` ✓).
 
+> **Bu ISO'nun kendisi indirilip (SHA256 birebir), UEFI/OVMF ile açıldı ve
+> sihirbaz ekran görüntüsüyle belgelendi.** Yani "yayınlanan ISO çalışmıyor"
+> durumu kalmadı.
+>
 > Yol boyunca **4 GERÇEK HATA** bulundu ve düzeltildi (aşağıda §1.4). Bu hatalar
 > yalnızca ISO'nun kendisi canlı açıldığında ortaya çıktı; statik testler ve
 > CI'ın "ISO yapısını doğrula" adımı bunları yakalamıyordu.
