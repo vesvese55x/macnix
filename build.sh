@@ -665,6 +665,17 @@ stage_isotree() {
   ok "filesystem.squashfs: $(du -h "$ISOTREE/live/filesystem.squashfs" | cut -f1)"
 
   install -m 0644 "${ROOT}/config/grub/grub.cfg" "$ISOTREE/boot/grub/grub.cfg"
+  # ── GRUB FONTU (2026-11-15 canlı test: font yoksa ekran SİYAH kalıyordu) ──
+  # gfxterm font olmadan hiçbir şey çizemiyor; menü görünmüyor. ISO'nun
+  # şablon ağacından unicode.pf2'yi kopyalıyoruz (yoksa grub.cfg metin moduna
+  # düşüyor — o da çalışır, ama font varsa menü grafik olur).
+  mkdir -p "$ISOTREE/boot/grub/fonts"
+  for f in /usr/share/grub/unicode.pf2 /usr/share/grub2/unicode.pf2 \
+           /boot/grub/fonts/unicode.pf2; do
+    [[ -f "$f" ]] && cp -f "$f" "$ISOTREE/boot/grub/fonts/unicode.pf2" && break
+  done
+  [[ -f "$ISOTREE/boot/grub/fonts/unicode.pf2" ]] \
+    && ok "GRUB fontu: unicode.pf2" || warn "GRUB fontu bulunamadı (menü metin modunda)"
   [[ -f "${ROOT}/calamares/branding/macnix/macnix_logo.png" ]] && \
     cp "${ROOT}/calamares/branding/macnix/macnix_logo.png" "$ISOTREE/.disk/logo.png" || true
   printf 'MacNix %s — macOS Virtualization Platform\n' "$VERSION" > "$ISOTREE/.disk/info"
