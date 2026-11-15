@@ -3,10 +3,11 @@
 # Kurulu sistemde: MacNix kontrol paneli
 
 # Calamares arayüz dili: oturum ortamı /etc/default/locale'i her zaman
-# taşımıyor; canlı VM'de arayüz İngilizce açıldı (ekran görüntüsüyle
-# doğrulandı). Burada açıkça Türkçe veriyoruz.
-export LANG=tr_TR.UTF-8
-export LANGUAGE=tr_TR:tr
+# taşımıyor (canlı VM'de arayüz Norveççe açılmıştı — ekran görüntüsüyle
+# doğrulandı). Varsayılan İNGİLİZCE; kullanıcı kurulumun ilk ekranındaki
+# diller listesinden istediğini seçebilir (Türkçe dahil).
+export LANG=en_US.UTF-8
+export LANGUAGE=en_US:en
 
 xsetroot -solid "#101014"
 xset s off -dpms 2>/dev/null || true
