@@ -116,7 +116,7 @@ def gui():
     try:
         import gi
         gi.require_version("Gtk", "3.0")
-        from gi.repository import Gtk, GLib, Pango
+        from gi.repository import Gtk, Gdk, GLib, Pango
     except (ImportError, ValueError):
         print("GTK bulunamadı — metin moduna geçiliyor", file=sys.stderr)
         return cli()
@@ -124,11 +124,49 @@ def gui():
     p = plan()
     st = state()
 
+    _apply_theme(Gtk, Gdk)
+
+    # ── Pencere sürükleme yardımcıları ──────────────────────────────────────
+    def _start_drag(widget, event):
+        """Başlık alanına basılıp sürüklenince pencereyi taşır."""
+        if event.button != 1:
+            return False
+        win.begin_move_drag(event.button, int(event.x_root), int(event.y_root),
+                            event.time)
+        return True
+
+    def _on_key(_w, ev):
+        """Klavye kısayolları: Ctrl+Q kapat, Ctrl+T terminal, Esc terminali kapat."""
+        ctrl = ev.state & Gdk.ModifierType.CONTROL_MASK
+        if ctrl and ev.keyval in (Gdk.KEY_q, Gdk.KEY_Q):
+            Gtk.main_quit()
+            return True
+        if ctrl and ev.keyval in (Gdk.KEY_t, Gdk.KEY_T):
+            toggle_terminal()
+            return True
+        return False
+
+
+    # ── Ana pencere ──────────────────────────────────────────────────────────
+    # DİKKAT (2026-11-15): Eski pencere Openbox'ta çerçevesiz/başlıksız açılıyor
+    # ve EKRANA SABİTLENİYORDU — kullanıcı taşıyamıyor, kapatamıyordu.
+    # Artık: gerçek başlık çubuğu (kapat/küçült), sürüklenebilir başlık alanı,
+    # boyutlandırma tutamacı ve Home/End gibi kısayollar.
     win = Gtk.Window(title="MacNix 2.0")
-    win.set_default_size(760, 560)
+    win.set_default_size(900, 660)
+    # Ekran 768 px ise pencereyi küçült — başlık çubuğu ve düğmeler görünür kalsın
+    try:
+        scr = Gdk.Screen.get_default()
+        if scr is not None and scr.get_height() < 760:
+            win.set_default_size(880, max(520, scr.get_height() - 60))
+    except Exception:                                  # noqa: BLE001
+        pass
     win.set_position(Gtk.WindowPosition.CENTER)
+    win.set_resizable(True)
+    win.set_decorated(True)
     win.set_border_width(0)
     win.connect("destroy", Gtk.main_quit)
+    win.connect("key-press-event", _on_key)
 
     outer = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=0)
     win.add(outer)
@@ -136,6 +174,7 @@ def gui():
     # Başlık
     head = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=2)
     head.set_border_width(18)
+    head.set_name("head")
     title = Gtk.Label()
     title.set_markup("<span size='x-large' weight='bold'>MacNix 2.0</span>")
     title.set_xalign(0)
@@ -148,6 +187,11 @@ def gui():
     sub.set_xalign(0)
     head.pack_start(title, False, False, 0)
     head.pack_start(sub, False, False, 0)
+
+    # Sürükle-bırak: başlık alanından tutup pencere taşınabilir
+    for w in (head, title, sub):
+        w.add_events(Gdk.EventMask.BUTTON_PRESS_MASK)
+        w.connect("button-press-event", _start_drag)
     outer.pack_start(head, False, False, 0)
 
     # Bilgi kutusu
@@ -201,9 +245,185 @@ def gui():
     logview.set_editable(False)
     logview.set_monospace(True)
     logview.set_wrap_mode(Gtk.WrapMode.WORD_CHAR)
+    logview.set_size_request(-1, 90)
     logbuf = logview.get_buffer()
     scroll.add(logview)
+    # ── Modern terminal paneli ───────────────────────────────────────────────
+    # TASARIM (2026-11-15 kullanıcı isteği): "terminal modern olsun ve
+    # hareket ettirilebilir / kapanabilir / tekrar açılabilir olsun; sabit
+    # durup kullanımı engelliyor."
+    # Çözüm: panelin ALTINDA, kendi başlık çubuğu olan bir Gtk.Paned bölmesi.
+    #  • Başlık çubuğundan sürüklenebilir (kendi içinde taşınır)
+    #  • ✕ ile kapanır, "Konsol" düğmesi ya da Ctrl+T ile geri açılır
+    #  • Üstteki çizgi (Gtk.Paned) ile yüksekliği ayarlanır
+    #  • Renkli, modern görünüm (koyu tema + monospace + imleç)
+    term_holder = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=0)
+    term_holder.set_no_show_all(True)
+
+    term_head = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=8)
+    term_head.set_border_width(6)
+    term_head.set_name("termhead")
+    term_dots = Gtk.Label(label="● ● ●")
+    term_dots.set_name("termdots")
+    term_title = Gtk.Label()
+    term_title.set_markup("<span size='small' weight='bold'>MacNix Terminal</span>")
+    term_title.set_xalign(0)
+    term_hint = Gtk.Label()
+    term_hint.set_markup("<span size='x-small' alpha='60%'>sürükle · Ctrl+T kapat/aç</span>")
+    term_hint.set_xalign(1)
+    btn_term_hide = Gtk.Button(label="✕")
+    btn_term_hide.set_relief(Gtk.ReliefStyle.NONE)
+    btn_term_hide.set_tooltip_text("Terminali kapat (Ctrl+T)")
+    term_head.pack_start(term_dots, False, False, 0)
+    term_head.pack_start(term_title, False, False, 4)
+    term_head.pack_end(btn_term_hide, False, False, 0)
+    term_head.pack_end(term_hint, False, False, 0)
+    term_holder.pack_start(term_head, False, False, 0)
+
+    term_scroll = Gtk.ScrolledWindow()
+    term_scroll.set_policy(Gtk.PolicyType.AUTOMATIC, Gtk.PolicyType.AUTOMATIC)
+    term_scroll.set_min_content_height(90)
+    term_holder.set_size_request(-1, 200)
+    term_view = Gtk.TextView()
+    term_view.set_monospace(True)
+    term_view.set_editable(True)
+    term_view.set_wrap_mode(Gtk.WrapMode.WORD_CHAR)
+    term_view.set_left_margin(10)
+    term_view.set_right_margin(10)
+    term_view.set_top_margin(8)
+    term_view.set_bottom_margin(8)
+    term_view.set_name("termview")
+    term_buf = term_view.get_buffer()
+    term_scroll.add(term_view)
+    term_holder.pack_start(term_scroll, True, True, 0)
+
+    # ▶ çalıştır + temizle
+    term_bar = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=6)
+    term_bar.set_border_width(6)
+    btn_term_run = Gtk.Button(label="Çalıştır")
+    btn_term_run.set_tooltip_text("Yazdığınız komutu çalıştır (Enter)")
+    btn_term_clear = Gtk.Button(label="Temizle")
+    btn_term_clear.set_tooltip_text("Terminal çıktısını temizle")
+    term_bar.pack_start(btn_term_run, False, False, 0)
+    term_bar.pack_start(btn_term_clear, False, False, 0)
+    term_holder.pack_start(term_bar, False, False, 0)
+
+    # Yerleşim: günlük (esner) + terminal (sabit yükseklik, altta).
+    # DİKKAT (2026-11-15 canlı test): Gtk.Paned ile yükseklik ayarı Openbox
+    # altında güvenilir değildi — terminal açılınca içerik pencerenin dışına
+    # taşıyordu. Sabit yükseklikli alt panel hem öngörülebilir hem de
+    # kullanımı engellemiyor: günlük alanı esner, terminal 300 px yer kaplar.
     outer.pack_start(scroll, True, True, 0)
+    outer.pack_start(term_holder, False, False, 0)
+
+    term_state = {"visible": False, "cwd": os.path.expanduser("~"),
+                  "hist": [], "hi": -1, "prompt": "$ "}
+
+    def term_write(text):
+        def _do():
+            term_buf.insert(term_buf.get_end_iter(), text)
+            m = term_buf.create_mark(None, term_buf.get_end_iter(), False)
+            term_view.scroll_mark_onscreen(m)
+        GLib.idle_add(_do)
+
+    def term_show(show=True):
+        # DİKKAT: set_no_show_all(False) ÖNCE çağrılmalı; aksi hâlde show_all()
+        # hiçbir şey göstermez (canlı testte panel açılmıyordu).
+        term_state["visible"] = show
+        if show:
+            term_holder.set_no_show_all(False)
+            term_holder.show_all()
+            term_view.grab_focus()
+        else:
+            term_holder.set_no_show_all(True)
+            term_holder.hide()
+        return False
+
+    def toggle_terminal(*_a):
+        show = not term_state["visible"]
+        term_show(show)
+        try:
+            btn_console.set_label("Konsol Kapat" if show else "Konsol Aç")
+        except NameError:
+            pass
+        return False
+
+    def term_prompt():
+        term_write(f"\n{term_state['cwd']} {term_state['prompt']}")
+
+    def term_run(*_a):
+        cmd = term_buf.get_text(term_buf.get_start_iter(),
+                                term_buf.get_end_iter(), False).split("\n")[-1]
+        cmd = cmd.split(term_state["prompt"], 1)[-1].strip()
+        if not cmd:
+            return False
+        term_state["hist"].append(cmd)
+        term_state["hi"] = len(term_state["hist"])
+        if cmd in ("clear", "cls"):
+            term_buf.set_text("")
+            term_prompt()
+            return False
+        if cmd.startswith("cd "):
+            target = os.path.expanduser(cmd[3:].strip())
+            nxt = os.path.normpath(os.path.join(term_state["cwd"], target))
+            term_state["cwd"] = nxt if os.path.isdir(nxt) else term_state["cwd"]
+            term_prompt()
+            return False
+
+        def _worker():
+            term_write("\n")
+            try:
+                proc = subprocess.Popen(cmd, shell=True, cwd=term_state["cwd"],
+                                        stdout=subprocess.PIPE,
+                                        stderr=subprocess.STDOUT,
+                                        text=True, bufsize=1)
+                for line in proc.stdout:
+                    term_write(line)
+                proc.wait()
+            except Exception as exc:                      # noqa: BLE001
+                term_write(f"[hata] {exc}\n")
+            term_prompt()
+
+        threading.Thread(target=_worker, daemon=True).start()
+        return False
+
+    def _on_term_key(_w, ev):
+        if ev.keyval in (Gdk.KEY_Return, Gdk.KEY_KP_Enter):
+            term_run()
+            return True
+        if ev.keyval == Gdk.KEY_Up and term_state["hist"]:
+            term_state["hi"] = max(0, term_state["hi"] - 1)
+            cmd = term_state["hist"][term_state["hi"]]
+            term_buf.set_text(term_buf.get_text(
+                term_buf.get_start_iter(), term_buf.get_end_iter(), False
+            ).rsplit("\n", 1)[0] + "\n" + term_state["cwd"] + " "
+                + term_state["prompt"] + cmd)
+            return True
+        if ev.keyval == Gdk.KEY_Down and term_state["hist"]:
+            term_state["hi"] = min(len(term_state["hist"]) - 1, term_state["hi"] + 1)
+            cmd = term_state["hist"][term_state["hi"]]
+            term_buf.set_text(term_buf.get_text(
+                term_buf.get_start_iter(), term_buf.get_end_iter(), False
+            ).rsplit("\n", 1)[0] + "\n" + term_state["cwd"] + " "
+                + term_state["prompt"] + cmd)
+            return True
+        return False
+
+    term_view.connect("key-press-event", _on_term_key)
+    btn_term_run.connect("clicked", term_run)
+    btn_term_clear.connect("clicked", lambda *_: term_buf.set_text(""))
+    btn_term_hide.connect("clicked", lambda *_: term_show(False))
+    # Başlık çubuğundan terminal bölmesini sürükle
+    term_head.add_events(Gdk.EventMask.BUTTON_PRESS_MASK)
+    term_head.connect("button-press-event", _start_drag)
+
+    def _term_init():
+        term_write("MacNix Terminal — komut yazıp Enter'a basın "
+                   "(sudo şifresiz; 'macnix-doctor' tanılama).\n")
+        term_prompt()
+        return False
+    GLib.idle_add(_term_init)
+
 
     # Düğmeler
     btnbox = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=8)
@@ -212,7 +432,8 @@ def gui():
     btn_install = Gtk.Button(label="macOS kurulumunu hazırla")
     btn_boot = Gtk.Button(label="macOS'u başlat")
     btn_doctor = Gtk.Button(label="Tanılama")
-    btn_console = Gtk.Button(label="Konsol")
+    btn_console = Gtk.Button(label="Konsol Aç")
+    btn_console.set_tooltip_text("Terminal panelini aç/kapat (Ctrl+T)")
 
     btnbox.pack_end(btn_install, False, False, 0)
     btnbox.pack_start(btn_console, False, False, 0)
@@ -274,10 +495,30 @@ def gui():
         threading.Thread(target=worker, daemon=True).start()
 
     def on_boot(_b):
-        threading.Thread(
-            target=lambda: subprocess.call(SUDO + ["macnix-vm", "start"]),
-            daemon=True).start()
-        log("macOS başlatılıyor…")
+        # DİKKAT (2026-11-15): Eski sürüm yalnızca "macOS başlatılıyor…" yazıp
+        # hiçbir çıktı göstermiyordu. QEMU düştüğünde kullanıcı hatayı göremiyordu.
+        # Artık macnix-vm'in tüm çıktısı canlı günlüğe akar ve çıkış kodu yazılır.
+        btn_boot.set_sensitive(False)
+        log("── macOS'u başlat ─────────────────────────────")
+
+        def _worker():
+            try:
+                proc = subprocess.Popen(
+                    SUDO + ["macnix-vm", "start"],
+                    stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
+                    text=True, bufsize=1)
+                for line in proc.stdout:
+                    log(line.rstrip())
+                proc.wait()
+                if proc.returncode == 0:
+                    log("✔ QEMU başladı. VM penceresi Sanal Makine panelinden izlenebilir.")
+                else:
+                    log(f"✘ macOS başlatılamadı (çıkış kodu {proc.returncode}).")
+                    log("  Ayrıntı: 'Tanılama' düğmesi · günlük: /var/lib/macnix/logs/qemu.log")
+            finally:
+                GLib.idle_add(lambda: btn_boot.set_sensitive(True))
+
+        threading.Thread(target=_worker, daemon=True).start()
 
     def on_doctor(_b):
         proc = subprocess.run(SUDO + ["macnix-doctor"], capture_output=True, text=True)
@@ -285,8 +526,7 @@ def gui():
         log(f"(çıkış kodu: {proc.returncode})")
 
     def on_console(_b):
-        subprocess.Popen(["x-terminal-emulator", "-e", "bash"] if _which("x-terminal-emulator")
-                         else ["xterm", "-e", "bash"])
+        toggle_terminal()
 
     btn_install.connect("clicked", on_install)
     btn_boot.connect("clicked", on_boot)
@@ -311,8 +551,56 @@ def gui():
         log("macOS kurulu görünüyor — doğrudan 'macOS'u başlat' diyebilirsiniz.")
 
     win.show_all()
+    # Terminal paneli varsayılan olarak KAPALI açılır; "Konsol" düğmesi ya da
+    # Ctrl+T ile açılır — böylece ekranı kaplayıp kullanımı engellemez.
+    term_show(False)
+
+    if os.environ.get("MACNIX_TERM_OPEN") == "1":
+        term_show(True)
+
     Gtk.main()
     return 0
+
+
+def _apply_theme(Gtk, Gdk):
+    """Modern görünüm: koyu, yuvarlak köşeli, mavi vurgulu tema.
+
+    2026-11-15 kullanıcı isteği: arayüz "daha modern" olsun. Ek paket
+    gerektirmeyen bir CSS sağlayıcısı kullanılır (GTK3'te yerleşik).
+    """
+    css = b"""
+    window { background: #12151c; color: #e8ecf3; }
+    #head { background: linear-gradient(135deg, #1b2333 0%, #12151c 100%);
+            border-bottom: 1px solid #263043; }
+    label { color: #e8ecf3; }
+    list { background: transparent; }
+    list row { background: #171c26; border-radius: 10px; margin: 3px 14px;
+               border: 1px solid #222b3a; }
+    list row:hover { background: #1d2431; border-color: #2f3d54; }
+    progressbar trough { background: #1b2230; border-radius: 8px; min-height: 8px; }
+    progressbar progress { background: linear-gradient(90deg,#39d0d4,#3b82f6);
+                           border-radius: 8px; min-height: 8px; }
+    button { background: #1f2836; border: 1px solid #2c3648; border-radius: 9px;
+             padding: 7px 14px; color: #dfe6f0; }
+    button:hover { background: #273143; border-color: #3f8cff; }
+    button:active { background: #2b3850; }
+    button:disabled { color: #5c6779; }
+    textview, textview text { background: #0e1219; color: #d7e2f0;
+                              font-family: "DejaVu Sans Mono", monospace; }
+    scrolledwindow { border: 1px solid #222b3a; border-radius: 10px; }
+    #termhead { background: #1a2130; border-bottom: 1px solid #263043;
+                border-radius: 10px 10px 0 0; }
+    #termdots { color: #ff5f57; letter-spacing: 3px; }
+    #termview { background: #0b0f16; }
+    """
+    try:
+        prov = Gtk.CssProvider()
+        prov.load_from_data(css)
+        Gtk.StyleContext.add_provider_for_screen(
+            Gdk.Screen.get_default(), prov,
+            Gtk.STYLE_PROVIDER_PRIORITY_APPLICATION)
+    except Exception as exc:                      # noqa: BLE001
+        print(f"tema uygulanamadı ({exc}) — varsayılan görünüm", file=sys.stderr)
 
 
 def _which(cmd):
