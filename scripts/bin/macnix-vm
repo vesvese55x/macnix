@@ -158,7 +158,19 @@ fi
 # ============================================================================
 #  Ön kontroller
 # ============================================================================
-[[ -e /dev/kvm ]] || die "/dev/kvm yok — BIOS'ta SVM/VT-x kapalı olabilir. macnix-vm doctor"
+# Sanallaştırma hızlandırması: /dev/kvm varsa KVM, yoksa TCG (yazılım emülasyonu).
+# DİKKAT (2026-11-15): Önceden /dev/kvm yoksa betik HİÇ çalışmıyordu. İç içe
+# sanallaştırma (VM içinde VM) veya BIOS'ta SVM kapalı makinelerde macOS yine
+# de açılabilsin diye yazılım moduna düşülür — yavaş ama çalışır.
+if [[ -e /dev/kvm ]] && [[ -w /dev/kvm ]]; then
+  QEMU_ACCEL="kvm"
+  ACCEL_DESC="KVM (donanım hızlandırma)"
+else
+  QEMU_ACCEL="tcg"
+  ACCEL_DESC="TCG (yazılım emülasyonu — yavaş)"
+  warn "/dev/kvm yok ya da erişilemiyor — yazılım emülasyonu kullanılacak"
+  warn "Donanım hızlandırma için BIOS'ta SVM/VT-x açın (macnix-vm doctor)"
+fi
 [[ -f "$DISK" ]] || die "macOS diski yok: $DISK (macnix-setup çalıştırılmamış)"
 [[ -f "$OVMF_CODE" ]] || die "OVMF firmware yok: $OVMF_CODE"
 [[ -d "$OC_DIR" ]] || die "OpenCore bulunamadı: $OC_DIR"
@@ -191,18 +203,25 @@ if (( HP_FREE < HP_WANTED )); then
     HP_FREE=$(awk '/HugePages_Free:/ {print $2}' /proc/meminfo)
   fi
 fi
-if (( HP_FREE >= HP_WANTED )); then
+if [[ "$QEMU_ACCEL" == "kvm" ]] && (( HP_FREE >= HP_WANTED )); then
   MEM_ARGS=(-mem-path /dev/hugepages -mem-prealloc)
   ok "hugepages: ${HP_WANTED} × 2 MB ayrıldı"
 else
-  warn "hugepages ayrılamadı (parçalanma) — normal bellek kullanılacak"
+  warn "hugepages kullanılmıyor (KVM yok ya da bellek parçalı) — normal bellek"
   MEM_ARGS=()
 fi
 
 # ============================================================================
 #  CPU pinning — gerçek topoloji
 # ============================================================================
-mapfile -t HOST_CPUS < <(nproc --all | xargs -I{} seq 0 $(( {} - 1 )))
+# DİKKAT (2026-11-15, canlı VM hatası): Eski satır
+#   mapfile -t HOST_CPUS < <(nproc --all | xargs -I{} seq 0 $(( {} - 1 )))
+# bash'te ÇALIŞMIYOR: `$(( {} - 1 ))` aritmetik olarak değerlendirilir ve
+# "{} - 1 : syntax error" verir; ayrıca xargs `-I{}` yer tutucusunu yutar.
+# Sonuç: CPU listesi boş kalıyor, taskset boş maskeyle çalışıp QEMU düşüyordu.
+HOST_NCPU=$(nproc --all 2>/dev/null || echo 1)
+(( HOST_NCPU >= 1 )) || HOST_NCPU=1
+mapfile -t HOST_CPUS < <(seq 0 $(( HOST_NCPU - 1 )))
 TOTAL=${#HOST_CPUS[@]}
 (( VM_CORES < TOTAL )) || VM_CORES=$(( TOTAL > 2 ? TOTAL - 1 : 1 ))
 
@@ -234,14 +253,21 @@ PY
     VM_CPU_LIST=$(IFS=,; echo "${VM_CPU_LIST_ARR[*]}")
   fi
 fi
+# Liste boşsa ya da yetersizse son N CPU'ya düş (boş maske qemu'yu öldürür)
 if [[ -z "$VM_CPU_LIST" ]]; then
   # son çare: son N CPU
   mapfile -t VM_CPU_LIST_ARR < <(printf '%s\n' "${HOST_CPUS[@]}" | tail -n "$VM_CORES")
   VM_CPU_LIST=$(IFS=,; echo "${VM_CPU_LIST_ARR[*]}")
 fi
 
+# TCG (yazılım) modunda çekirdek sayısını sınırla: MTTCG bu iş yükünde
+# genellikle daha yavaş ve bu sandbox'ta 2 vCPU var.
+if [[ "$QEMU_ACCEL" != "kvm" ]] && (( VM_CORES > 2 )); then
+  VM_CORES=2
+fi
 CPU_ARGS=(-smp "${VM_CORES},cores=${VM_CORES},threads=1,sockets=1")
-if [[ "$ARCH_PROFILE" == "vfio" ]]; then
+# `-cpu host` yalnızca KVM ile geçerli; yazılım modunda Penryn profiline düşülür
+if [[ "$ARCH_PROFILE" == "vfio" && "$QEMU_ACCEL" == "kvm" ]]; then
   CPU_ARGS+=(-cpu host,kvm=on,vendor=GenuineIntel,+invtsc,+kvm_pv_unhalt,+kvm_pv_eoi,+hypervisor,+ssse3,+sse4.2,+popcnt,+aes,+xsave,+avx,+avx2,check=off)
 else
   CPU_ARGS+=(-cpu Penryn,kvm=on,vendor=GenuineIntel,+ssse3,+sse4.2,+popcnt,+aes,+xsave,+xsaveopt,+hypervisor,vmware-cpuid-freq=on,check=off)
@@ -252,7 +278,7 @@ fi
 # ============================================================================
 Q=(
   -name macnix,process=macos-vm
-  -machine "q35,accel=kvm,kernel_irqchip=on,vmport=off"
+  -machine "q35,accel=${QEMU_ACCEL},kernel_irqchip=on,vmport=off"
   -overcommit mem-lock=on
   -m "${VM_RAM_MB}"
   "${MEM_ARGS[@]}"
@@ -362,11 +388,18 @@ for c in /sys/devices/system/cpu/cpufreq/policy*; do
   [[ -f "$c/scaling_governor" ]] && echo performance > "$c/scaling_governor" 2>/dev/null || true
 done
 
-say "macOS ${MACOS_VERSION} başlatılıyor (${VM_CORES} çekirdek, ${VM_RAM_MB} MB, ${ARCH_PROFILE})"
+say "macOS ${MACOS_VERSION} başlatılıyor (${VM_CORES} çekirdek, ${VM_RAM_MB} MB, ${ARCH_PROFILE}, ${ACCEL_DESC})"
 say "Görüntü: VNC 127.0.0.1:${VNC_DISPLAY}  |  Günlük: ${QEMU_LOG}"
 
 set +e
-taskset -c "$VM_CPU_LIST" qemu-system-x86_64 "${Q[@]}" >>"$QEMU_LOG" 2>&1 &
+# taskset yalnızca geçerli bir CPU listesi varsa kullanılır (boş maskeyle
+# qemu hiç başlamaz). Liste boşsa doğrudan qemu çalıştırılır.
+if [[ -n "$VM_CPU_LIST" ]] && command -v taskset >/dev/null 2>&1; then
+  taskset -c "$VM_CPU_LIST" qemu-system-x86_64 "${Q[@]}" >>"$QEMU_LOG" 2>&1 &
+else
+  warn "CPU sabitleme atlandı (liste boş) — qemu doğrudan başlatılıyor"
+  qemu-system-x86_64 "${Q[@]}" >>"$QEMU_LOG" 2>&1 &
+fi
 QPID=$!
 set -e
 echo "$QPID" > "$PID_FILE"
