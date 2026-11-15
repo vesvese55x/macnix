@@ -207,6 +207,10 @@ done
 ok "OpenCore.efi ($(du -h "$EFI/OC/OpenCore.efi" | cut -f1))"
 
 # 2) Sürücüler (zorunlu olanlar)
+# Sürücü seti: config.plist'teki UEFI.Drivers ile BİREBİR aynı olmalı.
+# 2026-11-15: config'te OpenCanopy/AudioDxe/ResetNvramEntry açıkken ESP'ye de
+# yazılıyor; OpenCanopy yalnızca PickerMode=External ile yüklenir (Builtin'de
+# yüklenmez, zararsız).
 for drv in OpenRuntime.efi OpenHfsPlus.efi ResetNvramEntry.efi OpenCanopy.efi AudioDxe.efi; do
   if [[ -f "$ASSETS/opencore/OC/Drivers/$drv" ]]; then
     cp "$ASSETS/opencore/OC/Drivers/$drv" "$EFI/OC/Drivers/"
