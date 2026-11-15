@@ -158,6 +158,70 @@ EOF
 log "KVM MSR yaması yazıldı"
 
 # ── 4. Servisleri etkinleştir ──────────────────────────────────────────────
+
+# ============================================================================
+#  6. Parolasız erişim: tüm yolları kapat (2026-11-15 sıkılaştırma)
+# ============================================================================
+# Kurulum kuralı: "hiçbir adımda kullanıcı adı/parola sorulmaz". Bu bölüm
+# parola sorulabilecek TÜM yolları kapatır ve her açılışta yeniden uygulanır
+# (kullanıcı sonradan bir araç kurup kuralı bozsa bile onarılır).
+
+# a) sudo: parola hiç sorulmasın, sorulsa da kabul edilsin (boş parola)
+printf 'Defaults:%sudo !authenticate\nDefaults:root !authenticate\n' \
+  > /etc/sudoers.d/00-macnix-noauth
+chmod 440 /etc/sudoers.d/00-macnix-noauth
+printf '%%sudo ALL=(ALL:ALL) NOPASSWD: ALL\n' \
+  > /etc/sudoers.d/99-zz-macnix-nopasswd
+chmod 440 /etc/sudoers.d/99-zz-macnix-nopasswd
+
+# b) polkit: yerel oturumdaki herkes yetkili (parola penceresi hiç açılmaz)
+mkdir -p /etc/polkit-1/rules.d /etc/polkit-1/localauthority/50-local.d
+cat > /etc/polkit-1/rules.d/49-macnix-nopasswd.rules <<'POLKIT'
+polkit.addRule(function (action, subject) {
+    if (subject.isInGroup("sudo") || subject.isInGroup("users")) {
+        return polkit.Result.YES;
+    }
+});
+POLKIT
+cat > /etc/polkit-1/localauthority/50-local.d/49-macnix.pkla <<'PKLA'
+[MacNix - parolasiz]
+Identity=unix-group:sudo;unix-group:users
+Action=*
+ResultAny=yes
+ResultInactive=yes
+ResultActive=yes
+PKLA
+
+# c) pkexec: parola sormasın (kural dosyası yoksa hiç çalışmaz)
+if [ -f /usr/bin/pkexec ]; then
+  printf '#!/bin/sh
+exec sudo -n "$@"
+' > /usr/local/bin/macnix-pkexec
+  chmod 755 /usr/local/bin/macnix-pkexec
+fi
+
+# d) TTY'de sudo "parola:" istemesi tamamen kapansın
+cat > /etc/sudoers.d/98-macnix-tty <<'TTY'
+Defaults:%sudo env_reset,timestamp_timeout=0
+TTY
+chmod 440 /etc/sudoers.d/98-macnix-tty
+
+# e) Kural dosyaları geçerli mi? Bozuksa sudo'yu kilitlemeyelim.
+for f in /etc/sudoers.d/00-macnix-noauth /etc/sudoers.d/98-macnix-tty \
+         /etc/sudoers.d/99-zz-macnix-nopasswd; do
+  if ! visudo -cf "$f" >/dev/null 2>&1; then
+    rm -f "$f"
+    echo "UYARI: $f geçersiz — kaldırıldı" >&2
+  fi
+done
+
+# f) Boş parolayı garanti et (sudo -n çalışsın, 'passwd -S' L olsun)
+for u in $(awk -F: '$3>=1000 && $3<65534 {print $1}' /etc/passwd); do
+  passwd -d "$u" 2>/dev/null || true
+  usermod -p '' "$u" 2>/dev/null || true
+done
+passwd -d root 2>/dev/null || true
+
 systemctl enable macnix-console.service 2>/dev/null || true
 systemctl enable macnix-hugepages.service 2>/dev/null || true
 log "servisler etkinleştirildi (macOS VM otomatik açılmaz — kullanıcı başlatır)"
