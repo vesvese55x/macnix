@@ -699,11 +699,14 @@ def test_debian_compat():
     check("build.sh: unicode.pf2 fontu ISO'ya kopyalaniyor",
           "unicode.pf2" in bld and "/boot/grub/fonts" in bld)
     gc = open(os.path.join(ROOT, "config/grub/grub.cfg"), encoding="utf-8").read()
-    check("grub.cfg: font yoksa 'terminal_output console'a düşüyor (siyah ekran hatası)",
-          "if loadfont" in gc and "terminal_output gfxterm" in gc
-          and "terminal_output console" in gc)
+    check("grub.cfg: terminal_output console (3 ISO'da gfxterm siyah ekran verdi)",
+          "terminal_output console" in gc and "terminal_output gfxterm\n" not in gc)
     check("grub.cfg: 'insmod font' var (loadfont için gerekli)",
           "insmod font" in gc)
+    import re as _re
+    entries = _re.findall(r'^menuentry "([^"]*)"', gc, _re.M)
+    check("grub.cfg: menü başlıkları ASCII (metin modunda Türkçe karakter kayboluyor)",
+          bool(entries) and all(all(ord(c) < 128 for c in e) for e in entries))
 
     # 10d) PANEL (macnix-setup) — modern + taşınabilir/kapanabilir terminal
     #   2026-11-15 kullanıcı isteği: "terminal modern olsun, hareket ettirilebilir,
