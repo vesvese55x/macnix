@@ -676,16 +676,24 @@ def test_debian_compat():
     check("panel: terminal varsayılan kapalı + Ctrl+T ile açılıp kapanıyor",
           "toggle_terminal" in st and "term_state" in st)
 
-    # 10j) GRUB EFI gömülü config (2026-11-15 canlı ISO testinde bulunan gerçek hata)
+    # 10j) GRUB EFI önyükleme (2026-11-15 canlı ISO testinde BULUNAN GERÇEK HATA)
     emb = open(os.path.join(ROOT, "config/grub/grub-efi-embed.cfg"), encoding="utf-8").read()
     emb_code = "\n".join(l for l in emb.split("\n") if not l.strip().startswith("#"))
-    check("grub-efi-embed: insmod ile gömülü modülleri yeniden yüklemiyor "
-          "(UEFI'de 'maximum recursion depth exceeded' -> menüsüz kabuk hatası)",
+    check("grub-efi-embed: 'insmod' YOK (gömülü modülü yeniden yükleme denemesi)",
           "insmod" not in emb_code)
-    check("grub-efi-embed: configfile ile /boot/grub/grub.cfg'ye devrediyor",
-          "configfile" in emb and "($root)/boot/grub/grub.cfg" in emb)
-    check("grub-efi-embed: etiket aramasi hata verirse true ile devam ediyor",
+    check("grub-efi-embed: saf ASCII (GRUB gömülü cfg'de UTF-8 bozuluyor)",
+          all(ord(c) < 128 for c in emb))
+    check("grub-efi-embed: yorum satırı YOK (GRUB '#'i komut sanıp hata basıyor)",
+          emb.count("#") == 0)
+    check("grub-efi-embed: configfile ile menüye devrediyor",
+          "configfile" in emb and "/boot/grub/grub.cfg" in emb)
+    check("grub-efi-embed: search başarısızsa true ile devam ediyor",
           "else\n    true\nfi" in emb)
+    bld = open(os.path.join(ROOT, "build.sh"), encoding="utf-8").read()
+    check("build.sh: BOOTX64.EFI 'grub-mkimage' ile (memdisk YOK → recursion hatası yok)",
+          "grub-mkimage -O x86_64-efi" in bld and "grub-mkstandalone --format" not in bld)
+    check("build.sh: gömülü cfg ESP'ye /EFI/BOOT/grub.cfg olarak yazılıyor",
+          "::/EFI/BOOT/grub.cfg" in bld)
 
     # 10d) PANEL (macnix-setup) — modern + taşınabilir/kapanabilir terminal
     #   2026-11-15 kullanıcı isteği: "terminal modern olsun, hareket ettirilebilir,
