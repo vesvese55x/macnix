@@ -20,6 +20,8 @@ LILU_VER="${LILU_VER:-1.7.2}"
 VSMC_VER="${VSMC_VER:-1.3.8}"
 WEG_VER="${WEG_VER:-1.7.1}"
 ALC_VER="${ALC_VER:-1.9.8}"
+# Yerel kext önbelleği: varsa indirme hiç yapılmaz (çevrimdışı kurulum / tekrar deneme)
+KEXT_CACHE="${MACNIX_KEXT_CACHE:-/var/cache/macnix/kexts}"
 
 C_OK=$'\033[0;32m'; C_WA=$'\033[1;33m'; C_ER=$'\033[0;31m'; C_B=$'\033[1m'; C_R=$'\033[0m'
 say()  { printf '%s[macnix]%s %s\n' "$C_B" "$C_R" "$*"; }
@@ -64,7 +66,12 @@ fetch() {
 }
 
 say "OpenCorePkg ${OC_VERSION} indiriliyor"
-if fetch "https://github.com/acidanthera/OpenCorePkg/releases/download/${OC_VERSION}/OpenCore-${OC_VERSION}-RELEASE.zip" "$TMP/oc.zip"; then
+for try in 1 2 3; do
+  fetch "https://github.com/acidanthera/OpenCorePkg/releases/download/${OC_VERSION}/OpenCore-${OC_VERSION}-RELEASE.zip" "$TMP/oc.zip" && break
+  warn "OpenCore indirme denemesi $try/3 başarısız — ${try}s bekleyip tekrar"
+  sleep "$try"
+done
+if [[ -s "$TMP/oc.zip" ]]; then
   unzip -q -o "$TMP/oc.zip" -d "$TMP/oc"
   rm -rf "$DEST/opencore"; mkdir -p "$DEST/opencore"
   cp -a "$TMP/oc/X64/EFI/." "$DEST/opencore/" 2>/dev/null || \
@@ -77,8 +84,21 @@ fi
 fetch_kext() {
   local repo="$1" ver="$2" name="$3"
   local url="https://github.com/acidanthera/${repo}/releases/download/${ver}/${repo}-${ver}-RELEASE.zip"
+  local src=""
   say "${repo} ${ver} indiriliyor"
-  if fetch "$url" "$TMP/${repo}.zip"; then
+  # 2026-11-15: bu ortamda uzun GitHub yönlendirmeleri tek seferde kopabiliyor.
+  # 3 kez, artan bekleme ile denenir; ayrıca yerel önbellek (MACNIX_KEXT_CACHE)
+  # varsa ağ hiç kullanılmaz.
+  local try
+  for try in 1 2 3; do
+    if [[ -n "$KEXT_CACHE" && -f "$KEXT_CACHE/${repo}-${ver}-RELEASE.zip" ]]; then
+      cp "$KEXT_CACHE/${repo}-${ver}-RELEASE.zip" "$TMP/${repo}.zip" && break
+    fi
+    fetch "$url" "$TMP/${repo}.zip" && break
+    warn "indirme denemesi $try/3 başarısız (${repo}) — ${try}s bekleyip tekrar"
+    sleep "$try"
+  done
+  if [[ -s "$TMP/${repo}.zip" ]]; then
     rm -rf "$DEST/kexts/${name}.kext"
     unzip -q -o "$TMP/${repo}.zip" -d "$TMP/${repo}"
     # Keştler paket içinde farklı derinlikte olabilir:
