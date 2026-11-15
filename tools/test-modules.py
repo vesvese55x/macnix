@@ -518,6 +518,31 @@ def test_debian_compat():
     check("build.sh grub hedeflerini doğruluyor",
           "x86_64-efi i386-pc" in build)
 
+    # 10b) PAROLA SORULMASIN — 2026-11-15 canlı hata regresyon testleri
+    #   (a) firstboot servisi ETKİNLEŞTİRİLMELİ: edilmediği için parola
+    #       kaldırma/sudoers onarımı hiç çalışmıyordu.
+    #   (b) sudoers'da %sudo NOPASSWD olmalı: yoksa terminalde "parola gerekli".
+    #   (c) polkit kuralı olmalı: GUI araçları parola penceresi açıyordu.
+    check("build.sh macnix-firstboot.service'i ETKİNLEŞTİRİYOR",
+          "systemctl enable macnix-firstboot.service" in build,
+          "firstboot servisi etkinleştirilmiyor → parola asla kaldırılmaz")
+    check("build.sh firstboot.sh'nin çalıştırılabilir olduğunu doğruluyor",
+          "-x \"$ROOTFS/opt/macnix/scripts/firstboot.sh\"" in build)
+    check("sudoers: %sudo grubuna NOPASSWD (parola sorulmaz)",
+          "%sudo ALL=(ALL:ALL) NOPASSWD: ALL" in build,
+          "sudoers.d'de %sudo NOPASSWD yok → 'sudo: a password is required'")
+    su = open(os.path.join(ROOT, "overlay/etc/sudoers.d/99-macnix"), encoding="utf-8").read()
+    check("99-macnix: %sudo NOPASSWD kuralı var",
+          "%sudo ALL=(ALL:ALL) NOPASSWD: ALL" in su)
+    fb = open(os.path.join(ROOT, "scripts/firstboot.sh"), encoding="utf-8").read()
+    check("firstboot: sudoers.d sahiplik/izin onarımı yapıyor",
+          "chown root:root /etc/sudoers.d" in fb and "chmod 0440 /etc/sudoers.d/*" in fb)
+    check("firstboot: parolasız sudo yazıyor (99-zz-macnix-nopasswd)",
+          "99-zz-macnix-nopasswd" in fb)
+    pol = os.path.join(ROOT, "overlay/etc/polkit-1/rules.d/49-macnix-nopasswd.rules")
+    check("polkit kuralı var (GUI'de parola penceresi çıkmaz)",
+          os.path.exists(pol) and "polkit.Result.YES" in open(pol, encoding="utf-8").read())
+
     # 11) lightdm autologin: Debian'ın "user" hesabı ezilmiş olmalı
     check("build.sh lightdm.conf'taki autologin-user=user satırını etkisizleştiriyor",
           "autologin-user" in build and "lightdm.conf" in build)
