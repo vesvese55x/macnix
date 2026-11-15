@@ -126,6 +126,33 @@ gen = d.get("PlatformInfo", {}).get("Generic", {})
 for key in ("SystemProductName", "SystemSerialNumber", "MLB", "SystemUUID"):
     if not gen.get(key):
         problems.append(f"PlatformInfo.Generic.{key} boş")
+# ── OpenCore ŞEMA denetimi (2026-11-15) ───────────────────────────────────
+# GERÇEK HATA: üretilen config.plist 7 bilinmeyen anahtar içeriyordu
+# (Misc.Debug.SerialInit, UEFI.Audio.AudioOut/MinimumVolume/VoiceOver,
+#  UEFI.Input.KeyMergeThreshold, UEFI.Quirks.ForceOemVolumeHack, UEFI.DriveInput)
+# ve OpenCore bunları görünce "Halting on critical error" deyip HİÇ açılmıyordu.
+# Artık her üretimde OpenCore'nin kendi Sample.plist'i ile karşılaştırılır.
+import json, os
+schema_path = os.environ.get("MACNIX_OC_SCHEMA", "/opt/macnix/config/opencore-schema.json")
+if os.path.exists(schema_path):
+    schema = json.load(open(schema_path))
+    def walk(actual, ref, path=""):
+        if isinstance(ref, dict) and isinstance(actual, dict):
+            for k in actual:
+                if k.startswith("#"):
+                    continue
+                if k not in ref:
+                    problems.append(f"OpenCore şemasında YOK: {path + '.' if path else ''}{k} "
+                                    f"(OpenCore açılışta 'No schema for {k}' verip durur)")
+                else:
+                    walk(actual[k], ref[k], f"{path}.{k}" if path else k)
+        elif isinstance(ref, list) and isinstance(actual, list) and ref:
+            for i, item in enumerate(actual):
+                walk(item, ref[0], f"{path}[{i}]")
+    walk(d, schema)
+else:
+    print(f"UYARI: şema dosyası yok ({schema_path}) — şema denetimi atlandı")
+
 if problems:
     print("SORUNLAR:")
     for p in problems:
