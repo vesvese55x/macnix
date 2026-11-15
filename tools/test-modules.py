@@ -536,6 +536,30 @@ def test_debian_compat():
     check("macOS indirme: Apple imajı için UDIF kuyruk (koly) kontrolü",
           "koly" in fm and "tail" in fm)
 
+    # 10h) OpenCore ŞEMA UYUMLULUĞU (2026-11-15 gerçek hata: Halting on critical error)
+    lib = open(os.path.join(ROOT, "scripts/macnix_lib.py"), encoding="utf-8").read()
+    check("lib: OpenCore 1.0.8 şemasında olmayan 'SerialInit' kaldırıldı",
+          "SerialInit" not in lib)
+    check("lib: UEFI.Audio 1.0.8 alanları (AudioOutMask/MaximumGain)",
+          "AudioOutMask" in lib and "\"AudioOut\":" not in lib and "MinimumVolume" not in lib)
+    check("lib: UEFI.Input.KeySwap (KeyMergeThreshold değil)",
+          "KeySwap" in lib and "KeyMergeThreshold" not in lib)
+    check("lib: UEFI.Quirks.ForceOcWriteFlash (ForceOemVolumeHack değil)",
+          "ForceOcWriteFlash" in lib and "ForceOemVolumeHack" not in lib)
+    check("lib: UEFI.DriveInput bölümü yok (şemada bulunmuyor)",
+          "DriveInput" not in lib)
+    check("lib: cpu_vendor None iken bool(None) → plist NoneType hatası yok",
+          "is_amd = bool(" in lib)
+    schema = json.load(open(os.path.join(ROOT, "config/opencore-schema.json")))
+    check("şema referansı config/opencore-schema.json mevcut ve Debug bölümü içeriyor",
+          "Misc" in schema and "Debug" in schema["Misc"] and "UEFI" in schema)
+    oc = open(os.path.join(ROOT, "scripts/bin/macnix-oc"), encoding="utf-8").read()
+    check("macnix-oc --check OpenCore şemasına göre denetim yapıyor",
+          "opencore-schema.json" in oc and "OpenCore şemasında YOK" in oc)
+    asst = open(os.path.join(ROOT, "scripts/bin/macnix-assets"), encoding="utf-8").read()
+    check("macnix-assets: 3 denemeli indirme + yerel kext önbelleği",
+          "denemesi" in asst and "KEXT_CACHE" in asst)
+
     # 10d) PANEL (macnix-setup) — modern + taşınabilir/kapanabilir terminal
     #   2026-11-15 kullanıcı isteği: "terminal modern olsun, hareket ettirilebilir,
     #   kapanabilir, tekrar açılabilir olsun; sabit durup kullanımı engelliyor."
@@ -564,7 +588,21 @@ def test_debian_compat():
     check("macnix-vm: /dev/kvm yoksa TCG ile çalışmaya devam ediyor",
           'QEMU_ACCEL="tcg"' in vm and "accel=${QEMU_ACCEL}" in vm)
     check("macnix-vm: -cpu host yalnızca KVM modunda",
-          '$ARCH_PROFILE" == "vfio" && "$QEMU_ACCEL" == "kvm"' in vm)
+          'if [[ "$QEMU_ACCEL" == "kvm" ]]; then' in vm and "-cpu host,kvm=on" in vm)
+
+    # 10g) TEŞHİS + PERFORMANS (2026-11-15)
+    doc = open(os.path.join(ROOT, "scripts/bin/macnix-doctor"), encoding="utf-8").read()
+    check("doctor: OpenCore seri günlüğünü yorumluyor (nerede durdu)",
+          "serial.log" in doc and "OcMiscLateInit" in doc)
+    check("doctor: KVM yoksa 'yazılım emülasyonu' uyarısı veriyor",
+          "KVM yok" in doc and "yazılım emülasyonu" in doc)
+    check("macnix-vm: KVM varken -cpu host (performans)",
+          'QEMU_ACCEL" == "kvm" ]]; then' in vm and "-cpu host,kvm=on" in vm)
+    check("macnix-vm: seri günlük her zaman açık (teşhis)",
+          "logs/serial.log" in vm)
+    fb = open(os.path.join(ROOT, "scripts/firstboot.sh"), encoding="utf-8").read()
+    check("firstboot: sudo NoNewPrivs/!authenticate + polkit + pkla (parola hiç sorulmaz)",
+          "!authenticate" in fb and "localauthority" in fb and "visudo -cf" in fb)
 
     # 10f) OPENCORE / UEFI ÖNYÜKLEME — 2026-11-15 gerçek önyükleme denemesi
     #   OSX-KVM + OpenCore 1.0.8 + gerçek OVMF ile QEMU çalıştırıldı, OpenCore
